@@ -152,3 +152,10 @@ export const QrIcon = ({ size = 18, ...p }: P) => (
     <path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
   </svg>
 );
+
+export const ClockIcon = ({ size = 16, ...p }: P) => (
+  <svg {...base(size, p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </svg>
+);

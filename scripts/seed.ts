@@ -4,7 +4,7 @@
 import { eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { createDb } from "../src/lib/db";
-import { buildings, machines, reports, rooms } from "../src/lib/db/schema";
+import { buildings, machineRuns, machines, reports, rooms } from "../src/lib/db/schema";
 import { randomId } from "../src/lib/ids";
 
 const H = 3_600_000;
@@ -12,7 +12,8 @@ const D = 24 * H;
 
 type R = { ago: number; outcome: string; setting?: string; symptoms?: string[]; note?: string; minutes?: number };
 
-const MACHINES: { code: string; kind: "washer" | "dryer"; label: string; wash?: string; reports: R[] }[] = [
+/** `running`: someone tapped "I started it" this many minutes ago, for a cycle of `minutes`. */
+const MACHINES: { code: string; kind: "washer" | "dryer"; label: string; wash?: string; reports: R[]; running?: { ago: number; minutes: number } }[] = [
   { code: "hsw1", kind: "washer", label: "Washer 1", wash: "101", reports: [
     { ago: 2 * H, outcome: "good", setting: "cold" }, { ago: 9 * H, outcome: "good", setting: "warm" }, { ago: 30 * H, outcome: "good", setting: "cold" },
   ] },
@@ -46,7 +47,7 @@ const MACHINES: { code: string; kind: "washer" | "dryer"; label: string; wash?: 
   { code: "hsd5", kind: "dryer", label: "Dryer 5", wash: "205", reports: [] },
   { code: "hsd6", kind: "dryer", label: "Dryer 6", wash: "206", reports: [
     { ago: 8 * H, outcome: "dry", setting: "high" }, { ago: 2 * D, outcome: "dry", setting: "high" }, { ago: 9 * D, outcome: "damp", setting: "medium" },
-  ] },
+  ], running: { ago: 20, minutes: 45 } },
 ];
 
 async function main() {
@@ -76,6 +77,11 @@ async function main() {
         id: randomId(), machineId, createdAt: now - r.ago, outcome: r.outcome, setting: r.setting ?? null, symptoms: r.symptoms ?? [],
         minutes: r.minutes ?? null, note: r.note ?? null, deviceHash: fake, ipHash: fake, trust: 1,
       });
+    }
+    if (m.running) {
+      const fake = createHash("sha256").update(`seed-run-${m.code}`).digest("hex");
+      const startedAt = now - m.running.ago * 60_000;
+      await db.insert(machineRuns).values({ id: randomId(), machineId, startedAt, endsAt: startedAt + m.running.minutes * 60_000, deviceHash: fake, ipHash: fake });
     }
   }
   console.log(`✓ seeded Hedrick Summit → /b/hedrick-summit/laundry (${MACHINES.length} machines, ${n} reports)`);

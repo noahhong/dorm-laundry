@@ -61,6 +61,34 @@ test("undo doesn't reset the per-machine rate limit", async ({ page }) => {
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("just reported");
 });
 
+test("\"I started it\" timer shows others when a machine will be free", async ({ page, browser }) => {
+  // Seeded: someone started Dryer 6 twenty minutes into a 45-minute cycle.
+  await page.goto("/b/hedrick-summit/laundry");
+  const dryer6 = page.getByRole("link", { name: /^Dryer 6, / });
+  await expect(dryer6).toContainText(/In use until ~\d{1,2}:\d{2}.* · 2\d min left/);
+  await expect(dryer6).toHaveAttribute("aria-label", /in use, about 2\d minutes left/);
+
+  await page.goto("/m/hsw3");
+  const timer = page.getByRole("region", { name: "Using it now?" });
+  await timer.getByLabel("runs for").selectOption("30");
+  await timer.getByRole("button", { name: "I started it" }).click();
+  const mine = page.getByRole("region", { name: "In use" });
+  await expect(mine).toContainText(/You started it\. Free at about \d{1,2}:\d{2}.* · 30 min left/);
+
+  // Another phone sees it too, without a way to stop someone else's timer.
+  const other = await browser.newContext();
+  const otherPage = await other.newPage();
+  await otherPage.goto("/m/hsw3");
+  await expect(otherPage.getByRole("region", { name: "In use" })).toContainText(/Free at about/);
+  await expect(otherPage.getByRole("button", { name: "Stop timer" })).toBeHidden();
+  await otherPage.goto("/b/hedrick-summit/laundry");
+  await expect(otherPage.getByRole("link", { name: /^Washer 3, / })).toContainText(/In use until/);
+  await other.close();
+
+  await mine.getByRole("button", { name: "Stop timer" }).click();
+  await expect(page.getByRole("region", { name: "Using it now?" })).toBeVisible();
+});
+
 // Keep this test last: it locks the (shared, localhost) test IP out of admin login for 15 minutes.
 test("admin login locks out an IP after repeated wrong passwords", async ({ page }) => {
   await page.goto("/admin/login");

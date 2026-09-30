@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRoomFallback, computeStatus, detectWeakDryers, recommendSetting, type MachineInput, type ReportInput } from "../src/lib/status";
+import { DEFAULT_PARAMS, applyRoomFallback, computeStatus, currentRun, defaultRunMinutes, detectWeakDryers, recommendSetting, type MachineInput, type ReportInput, type RunInput } from "../src/lib/status";
 
 const NOW = Date.UTC(2026, 8, 30, 12);
 const H = 3_600_000;
@@ -196,5 +196,52 @@ describe("detectWeakDryers", () => {
     expect(detectWeakDryers([lowOnly, good("a"), good("b")], NOW).size).toBe(0);
     const spam = { id: "spam", reports: Array.from({ length: 6 }, (_, i) => rep({ ago: i * H, outcome: "wet", setting: "medium", deviceHash: "one" })) };
     expect(detectWeakDryers([spam, good("a"), good("b")], NOW).size).toBe(0);
+  });
+});
+
+describe("currentRun (\"I started it\" timer)", () => {
+  const M = 60_000;
+  const run = (p: Partial<RunInput> & { ago: number; minutes: number }): RunInput => {
+    const { ago, minutes, ...rest } = p;
+    return { id: `run${seq++}`, startedAt: NOW - ago, endsAt: NOW - ago + minutes * M, endedAt: null, deviceHash: "a", ...rest };
+  };
+
+  it("is null with no runs", () => {
+    expect(currentRun([], NOW)).toBeNull();
+  });
+
+  it("shows running until the estimate, with the end time", () => {
+    const r = run({ ago: 10 * M, minutes: 45 });
+    expect(currentRun([r], NOW)).toMatchObject({ state: "running", runId: r.id, endsAt: NOW + 35 * M, expiresAt: NOW + 50 * M });
+  });
+
+  it("shows finishing during the grace period, then expires on its own", () => {
+    expect(currentRun([run({ ago: 50 * M, minutes: 45 })], NOW)?.state).toBe("finishing");
+    expect(currentRun([run({ ago: 60 * M, minutes: 45 })], NOW)).toBeNull();
+    expect(currentRun([run({ ago: 50 * M, minutes: 45 })], NOW, { ...DEFAULT_PARAMS, run: { ...DEFAULT_PARAMS.run, graceMs: 0 } })).toBeNull();
+  });
+
+  it("only the newest run counts, and a cancelled newest run frees the machine", () => {
+    const older = run({ ago: 30 * M, minutes: 60, deviceHash: "a" });
+    const newer = run({ ago: 5 * M, minutes: 30, deviceHash: "b" });
+    expect(currentRun([newer, older], NOW)?.runId).toBe(newer.id);
+    expect(currentRun([older, { ...newer, endedAt: NOW - M }], NOW)).toBeNull();
+  });
+
+  it("ignores runs that start in the future", () => {
+    expect(currentRun([run({ ago: -5 * M, minutes: 30 })], NOW)).toBeNull();
+  });
+
+  it("marks the viewer's own run as mine", () => {
+    const r = run({ ago: M, minutes: 30, deviceHash: "me" });
+    expect(currentRun([r], NOW, DEFAULT_PARAMS, "me")?.mine).toBe(true);
+    expect(currentRun([r], NOW, DEFAULT_PARAMS, "someone-else")?.mine).toBe(false);
+    expect(currentRun([r], NOW)?.mine).toBe(false);
+  });
+
+  it("pre-fills the room's paid dryer cycle, else the site-wide defaults", () => {
+    expect(defaultRunMinutes("dryer", 60)).toBe(60);
+    expect(defaultRunMinutes("dryer", null)).toBe(DEFAULT_PARAMS.run.dryerMinutes);
+    expect(defaultRunMinutes("washer", 60)).toBe(DEFAULT_PARAMS.run.washerMinutes);
   });
 });

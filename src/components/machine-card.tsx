@@ -3,6 +3,7 @@ import type { MachineView } from "@/lib/queries";
 import { timeAgo, timeAgoLong } from "@/lib/format";
 import { OUTCOME_LABEL } from "@/lib/labels";
 import { DryerIcon, WasherIcon } from "./icons";
+import { InUseLine } from "./run-timer";
 import { SettingChip, StatusTile, TONE, statusSentence, STATUS_LABEL } from "./status";
 
 export function MachineCard({ m, now, index = 0 }: { m: MachineView; now: number; index?: number }) {
@@ -19,7 +20,7 @@ export function MachineCard({ m, now, index = 0 }: { m: MachineView; now: number
     <li className="animate-fade-up list-none" style={{ ["--i" as string]: index }}>
       <Link
         href={`/m/${m.code}`}
-        aria-label={statusSentence(m.label, s, m.recommendation, s.lastReportAt ? timeAgoLong(s.lastReportAt, now) : null)}
+        aria-label={statusSentence(m.label, s, m.recommendation, s.lastReportAt ? timeAgoLong(s.lastReportAt, now) : null, m.inUse, now)}
         className={`pressable flex min-h-[88px] items-center gap-3 rounded-[var(--radius-md)] border bg-surface p-3.5 shadow-e1 hover:border-border-strong/50 ${
           s.level === "unknown" ? "border-dashed border-border-strong/40" : "border-border"
         }`}
@@ -31,6 +32,7 @@ export function MachineCard({ m, now, index = 0 }: { m: MachineView; now: number
             <span className="truncate">{m.label}</span>
           </div>
           <div className={`mt-0.5 truncate text-label ${s.level === "unknown" ? "text-text-3" : tone.fg}`}>{line}</div>
+          {m.inUse && <InUseLine inUse={m.inUse} serverNow={now} />}
         </div>
         {m.recommendation && s.level !== "broken" ? (
           <SettingChip rec={m.recommendation} />

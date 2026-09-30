@@ -4,6 +4,7 @@ import { BackLink, Page } from "@/components/chrome";
 import { HeatLadder, LadderLegend } from "@/components/heat-ladder";
 import { AlertIcon, DryerIcon, ExternalIcon, StatusIcon, ThermometerIcon, WasherIcon } from "@/components/icons";
 import { ReportSheet } from "@/components/report-sheet";
+import { RunTimer } from "@/components/run-timer";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
 import { isoTime, plural, timeAgo } from "@/lib/format";
 import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
@@ -117,6 +118,11 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
           </div>
         </div>
       </section>
+
+      {/* "I started it" timer */}
+      {!data.retired && machine.adminState !== "out_of_order" && (
+        <RunTimer code={machine.code} kind={machine.kind} inUse={view.inUse} defaultMinutes={data.runMinutes} serverNow={now} />
+      )}
 
       {/* Outlier: this dryer is much weaker than its room-mates */}
       {view.weak && (
