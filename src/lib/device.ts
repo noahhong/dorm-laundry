@@ -21,9 +21,13 @@ export async function deviceHash({ create }: { create: boolean }): Promise<strin
 }
 
 /** Salted per day so hashes can't be joined across days. Never store the raw IP. */
-export async function ipHash(now = Date.now()): Promise<string> {
+export async function clientIp(): Promise<string> {
   const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+}
+
+export async function ipHash(now = Date.now()): Promise<string> {
+  const ip = await clientIp();
   const day = new Date(now).toISOString().slice(0, 10);
   return sha256(`ip:${ip}:${day}:${sessionSecret()}`);
 }

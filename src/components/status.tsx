@@ -66,7 +66,7 @@ export function ConfidenceDots({ confidence }: { confidence: Confidence }) {
 
 export function SettingChip({ rec, compact = false }: { rec: Recommendation; compact?: boolean }) {
   const label = SETTING_LABEL[rec.setting];
-  if (rec.basis === "default") {
+  if (rec.basis !== "reports") {
     return (
       <span className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-border-strong/60 px-2.5 text-label text-text-2">
         <ThermometerIcon className="text-text-3" />
@@ -87,6 +87,10 @@ export function SettingChip({ rec, compact = false }: { rec: Recommendation; com
 export function statusSentence(label: string, s: MachineStatus, rec: Recommendation | null, ago: string | null) {
   const parts = [`${label}, ${STATUS_LABEL[s.level]}${s.reason ? `: ${s.reason}` : ""}`];
   if (ago) parts.push(`last report ${ago}`);
-  if (rec) parts.push(rec.basis === "default" ? `no setting data yet, try ${SETTING_LABEL[rec.setting]}` : `recommended ${SETTING_LABEL[rec.setting]}`);
+  if (rec) {
+    if (rec.basis === "reports") parts.push(`recommended ${SETTING_LABEL[rec.setting]}`);
+    else if (rec.basis === "room") parts.push(`no reports for this dryer yet, try ${SETTING_LABEL[rec.setting]}`);
+    else parts.push(`no setting data yet, try ${SETTING_LABEL[rec.setting]}`);
+  }
   return parts.join(". ") + ".";
 }

@@ -21,6 +21,8 @@ import { CheckIcon, DropIcon, DropletsIcon, FlameIcon, ScissorsIcon, SparkleIcon
 type Props = {
   machine: { code: string; label: string; kind: MachineKind; level: StatusLevel; reason: string | null };
   autoOpen?: boolean;
+  /** Cloudflare Turnstile site key; when set, each report carries a bot-check token. */
+  turnstileSiteKey?: string;
 };
 
 type Tone = "works" | "caution" | "broken";
@@ -57,7 +59,7 @@ function writeLast(kind: MachineKind, v: string) {
   } catch {}
 }
 
-export function ReportSheet({ machine, autoOpen = false }: Props) {
+export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey }: Props) {
   const [open, setOpen] = useState(autoOpen);
   const [toast, setToast] = useState<{ text: string; id?: string; tone: "ok" | "err" } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -107,6 +109,7 @@ export function ReportSheet({ machine, autoOpen = false }: Props) {
       {open && (
         <Sheet
           machine={machine}
+          turnstileSiteKey={turnstileSiteKey}
           onClose={close}
           onDone={(id) => {
             close();
@@ -141,7 +144,18 @@ export function ReportSheet({ machine, autoOpen = false }: Props) {
   );
 }
 
-function Sheet({ machine, onClose, onDone }: { machine: Props["machine"]; onClose: () => void; onDone: (id: string) => void }) {
+function Sheet({
+  machine,
+  turnstileSiteKey,
+  onClose,
+  onDone,
+}: {
+  machine: Props["machine"];
+  turnstileSiteKey?: string;
+  onClose: () => void;
+  onDone: (id: string) => void;
+}) {
+  const { ref: turnstileRef, token: turnstileToken, ready: turnstileReady, reset: resetTurnstile } = useTurnstile(turnstileSiteKey);
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const openedAt = useRef(0);
@@ -206,7 +220,7 @@ function Sheet({ machine, onClose, onDone }: { machine: Props["machine"]; onClos
   }, [outcome]);
 
   const needsSetting = isDryer && outcome !== null && outcome !== "not_working";
-  const canSubmit = outcome !== null && (!needsSetting || setting !== null) && !pending;
+  const canSubmit = outcome !== null && (!needsSetting || setting !== null) && !pending && turnstileReady;
 
   function pickOutcome(o: string, presetSymptoms: string[] = []) {
     setOutcome(o);
@@ -229,11 +243,15 @@ function Sheet({ machine, onClose, onDone }: { machine: Props["machine"]; onClos
         note: note || null,
         website: (panelRef.current?.querySelector<HTMLInputElement>('input[name="website"]')?.value ?? "") || undefined,
         elapsedMs: Date.now() - openedAt.current,
+        turnstileToken: turnstileToken ?? undefined,
       });
       if (res.ok) {
         if (setting) writeLast(machine.kind, setting);
         onDone(res.id);
-      } else setError(res.error);
+      } else {
+        setError(res.error);
+        resetTurnstile();
+      }
     });
   }
 
@@ -287,6 +305,7 @@ function Sheet({ machine, onClose, onDone }: { machine: Props["machine"]; onClos
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3">
+          {turnstileSiteKey && <div ref={turnstileRef} className="empty:hidden [&:has(iframe)]:mt-3" />}
           {/* Honeypot: hidden from humans and assistive tech. */}
           <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden className="absolute left-[-9999px] h-0 w-0 opacity-0" />
 
@@ -466,11 +485,78 @@ function Sheet({ machine, onClose, onDone }: { machine: Props["machine"]; onClos
               onClick={submit}
               className="pressable h-[52px] w-full rounded-[14px] bg-accent text-headline text-accent-fg shadow-e1 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {pending ? "Sending…" : needsSetting && !setting ? "Pick a setting" : "Submit report"}
+              {pending ? "Sending…" : needsSetting && !setting ? "Pick a setting" : !turnstileReady ? "Checking…" : "Submit report"}
             </button>
           </div>
         )}
       </div>
     </div>
   );
+}
+
+type TurnstileApi = {
+  render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+  reset: (id: string) => void;
+  remove: (id: string) => void;
+};
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+
+let turnstileScript: Promise<void> | null = null;
+function loadTurnstile(): Promise<void> {
+  turnstileScript ??= new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      turnstileScript = null;
+      reject(new Error("turnstile failed to load"));
+    };
+    document.head.appendChild(s);
+  });
+  return turnstileScript;
+}
+
+/** Renders an interaction-only Turnstile widget; `ready` is always true when no site key is configured. */
+function useTurnstile(siteKey?: string) {
+  const ref = useRef<HTMLDivElement>(null);
+  const widget = useRef<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!siteKey) return;
+    let cancelled = false;
+    loadTurnstile()
+      .then(() => {
+        if (cancelled || !ref.current || !window.turnstile) return;
+        widget.current = window.turnstile.render(ref.current, {
+          sitekey: siteKey,
+          appearance: "interaction-only",
+          size: "flexible",
+          callback: (t: string) => setToken(t),
+          "expired-callback": () => setToken(null),
+          "error-callback": () => setToken(null),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (widget.current) window.turnstile?.remove(widget.current);
+      widget.current = null;
+    };
+  }, [siteKey]);
+
+  return {
+    ref,
+    token,
+    ready: !siteKey || token !== null,
+    reset: () => {
+      setToken(null);
+      if (widget.current) window.turnstile?.reset(widget.current);
+    },
+  };
 }

@@ -8,6 +8,7 @@ import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/sta
 import { isoTime, plural, timeAgo } from "@/lib/format";
 import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
 import { getMachine, type PublicReport } from "@/lib/queries";
+import { turnstileSiteKey } from "@/lib/turnstile";
 import type { StatusLevel } from "@/lib/status";
 import { statusEvidence } from "@/lib/status";
 
@@ -129,11 +130,15 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
             </span>
             <div>
               <p className="text-title text-text">
-                {rec.basis === "default" ? `Try ${SETTING_LABEL[rec.setting]}` : SETTING_LABEL[rec.setting]}
+                {rec.basis === "reports" ? SETTING_LABEL[rec.setting] : `Try ${SETTING_LABEL[rec.setting]}`}
               </p>
               <p className="flex items-center gap-2 text-label text-text-2">
                 {rec.basis === "default" ? (
                   "No setting reports yet. Tell us how it goes."
+                ) : rec.basis === "room" ? (
+                  rec.roomRange && rec.roomRange.min !== rec.roomRange.max
+                    ? `No reports for this dryer yet. The other ${rec.roomMachines} dryers here range ${SETTING_LABEL[rec.roomRange.min]}–${SETTING_LABEL[rec.roomRange.max]}; start in the middle.`
+                    : `No reports for this dryer yet. The other ${rec.roomMachines} dryers here all use ${SETTING_LABEL[rec.setting]}.`
                 ) : (
                   <>
                     Based on residents&apos; reports <ConfidenceDots confidence={rec.confidence} />
@@ -210,6 +215,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
         <ReportSheet
           machine={{ code: machine.code, label: machine.label, kind: machine.kind, level: s.level, reason: s.reason }}
           autoOpen={sp.r === "1"}
+          turnstileSiteKey={turnstileSiteKey()}
         />
       )}
     </Page>

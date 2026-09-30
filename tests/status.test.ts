@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeStatus, recommendSetting, type MachineInput, type ReportInput } from "../src/lib/status";
+import { applyRoomFallback, computeStatus, recommendSetting, type MachineInput, type ReportInput } from "../src/lib/status";
 
 const NOW = Date.UTC(2026, 8, 30, 12);
 const H = 3_600_000;
@@ -145,5 +145,24 @@ describe("recommendSetting", () => {
     const r = recommendSetting([rep({ ago: D, outcome: "too_hot", setting: "high" }), rep({ ago: D, outcome: "dry", setting: "low" })], NOW);
     const bySetting = Object.fromEntries(r.ladder.map((l) => [l.setting, l.verdict]));
     expect(bySetting).toMatchObject({ high: "over", low: "good", medium: "none" });
+  });
+});
+
+describe("applyRoomFallback", () => {
+  const dry = (setting: string) => recommendSetting([rep({ ago: D, outcome: "dry", setting }), rep({ ago: D, outcome: "dry", setting })], NOW);
+  const none = () => recommendSetting([], NOW);
+
+  it("borrows the lower median of sibling settings for dryers without data", () => {
+    const out = applyRoomFallback([dry("low"), dry("medium"), dry("high"), dry("high"), none()]);
+    expect(out[4]).toMatchObject({ setting: "medium", basis: "room", roomMachines: 4, roomRange: { min: "low", max: "high" } });
+    expect(out[2].setting).toBe("high"); // informed dryers untouched
+  });
+
+  it("leans cooler when the room is split", () => {
+    expect(applyRoomFallback([dry("high"), dry("low"), none()])[2].setting).toBe("low");
+  });
+
+  it("needs at least two informed siblings", () => {
+    expect(applyRoomFallback([dry("low"), none()])[1].basis).toBe("default");
   });
 });

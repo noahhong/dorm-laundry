@@ -34,6 +34,7 @@ npm run dev                       # http://localhost:3000
 
 - `/` redirects to the only room, `/b/hedrick-summit/laundry`.
 - Machine pages are at `/m/<code>`. The seed uses readable codes: `hsd1`–`hsd6` for dryers and `hsw1`–`hsw4` for washers. Try `/m/hsd2?r=1` to see what a QR scan opens.
+- Students can add the site to their home screen (it's a PWA), and switch light/dark/auto with the header toggle.
 - Admin is at `/admin`, using the password from `ADMIN_PASSWORD`. From there you can add buildings, rooms and machines, mark machines out of order or fixed, hide reports, and **print QR sheets**.
 
 To reset the demo data, run `npm run db:seed -- --reset`.
@@ -61,6 +62,7 @@ To reset the demo data, run `npm run db:seed -- --reset`.
 | `ADMIN_PASSWORD` | for admin | Leave it empty to disable admin |
 | `SESSION_SECRET` | yes in prod | 32+ random characters (`openssl rand -base64 32`). Signs the admin cookie and salts the device and IP hashes. |
 | `PUBLIC_BASE_URL` | for printing | The origin printed in QR codes, e.g. `https://laundry.example.com` |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional | Turns on the invisible Cloudflare Turnstile bot check for reports. Both must be set; leave empty to disable. |
 
 ## Deploy (Vercel + Turso, both free tiers)
 
@@ -83,7 +85,8 @@ To reset the demo data, run `npm run db:seed -- --reset`.
    - Deploy.
    - In Project → Settings → Functions, pick the region closest to your Turso database (e.g. `sfo1` for `lax`).
 4. **Custom domain** (optional). Set `PUBLIC_BASE_URL` to it **before** printing QR codes, so stickers never point at a preview URL.
-5. Open `/admin` and add rooms and machines. Label machines to match their physical numbers. Then open **Print QR sheet**, print at 100% on US Letter, cut, and stick one near each machine's controls.
+5. (Optional) If spam shows up, create a free Turnstile widget in the Cloudflare dashboard for your domain and set both `TURNSTILE_*` variables.
+6. Open `/admin` and add rooms and machines. Label machines to match their physical numbers. Then open **Print QR sheet**, print at 100% on US Letter, cut, and stick one near each machine's controls.
 
 Vercel Hobby is for non-commercial use only. If a club or department officially sponsors the project, the same code can run on Cloudflare Workers through [OpenNext](https://opennext.js.org/cloudflare) (see PLAN.md §8).
 

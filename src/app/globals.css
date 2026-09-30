@@ -79,6 +79,41 @@
   }
 }
 
+/* Manual override from the theme toggle (see ThemeToggle). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --surface: #16191e;
+  --surface-2: #1e2228;
+  --surface-3: #262b32;
+  --text: #f3f4f6;
+  --text-2: #aeb4be;
+  --text-3: #8b929c;
+  --border: #2a2f37;
+  --border-strong: #8b929c;
+  --accent: #8aa4ff;
+  --accent-fg: #0b0d10;
+  --accent-tint: #1b2340;
+
+  --works-fg: #6ce9a6;
+  --works-tint: #0f2e1f;
+  --works-icon: #32d583;
+  --caution-fg: #fdc96b;
+  --caution-tint: #33240a;
+  --caution-icon: #f5a524;
+  --broken-fg: #fda29b;
+  --broken-tint: #3a1512;
+  --broken-icon: #f97066;
+  --unknown-fg: #c0c6d0;
+  --unknown-tint: #23272e;
+  --unknown-icon: #8b929c;
+
+  --shadow-e1: 0 0 0 1px rgb(255 255 255 / 0.02);
+  --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-e3: 0 -8px 32px rgb(0 0 0 / 0.6);
+  --scrim: rgb(0 0 0 / 0.6);
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);

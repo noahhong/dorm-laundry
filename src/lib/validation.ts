@@ -26,6 +26,8 @@ export const reportSchema = z.object({
   website: z.string().max(0).optional(),
   /** ms the sheet was open; bots submit instantly. */
   elapsedMs: z.number().int().min(0).optional(),
+  /** Cloudflare Turnstile token; required only when TURNSTILE_SECRET_KEY is set. */
+  turnstileToken: z.string().max(4096).optional(),
 });
 export type ReportPayload = z.input<typeof reportSchema>;
 

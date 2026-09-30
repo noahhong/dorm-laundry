@@ -47,7 +47,11 @@ export interface LadderRow {
 
 export interface Recommendation {
   setting: DryerSetting;
-  basis: "reports" | "default";
+  /** "room": no data for this dryer, borrowed from its siblings (see applyRoomFallback). */
+  basis: "reports" | "room" | "default";
+  /** Set when basis is "room": how many sibling dryers the suggestion came from, and their spread. */
+  roomMachines?: number;
+  roomRange?: { min: DryerSetting; max: DryerSetting };
   confidence: Confidence;
   tips: string[];
   avoid: { setting: DryerSetting; reports: number }[];
@@ -331,4 +335,21 @@ export function recommendSetting(allReports: ReportInput[], now: number): Recomm
     tips.push("Clothes often come out damp: add extra time");
   }
   return { setting: L[pick], basis: "reports", confidence: n[pick] >= 1 ? "low" : "none", tips, avoid, ladder };
+}
+
+/**
+ * For dryers with no setting reports, suggest the middle of what the other dryers in the room settled on.
+ * Uses the lower median (the cooler pick when the room is split) because an untested dryer might run hot.
+ * Needs at least two sibling dryers with report-based recommendations.
+ */
+export function applyRoomFallback(recs: Recommendation[]): Recommendation[] {
+  const idx = (s: DryerSetting) => DRYER_SETTINGS.indexOf(s);
+  const informed = recs
+    .filter((r) => r.basis === "reports" && r.confidence !== "none")
+    .map((r) => idx(r.setting))
+    .sort((a, b) => a - b);
+  if (informed.length < 2) return recs;
+  const pick = DRYER_SETTINGS[informed[Math.floor((informed.length - 1) / 2)]];
+  const roomRange = { min: DRYER_SETTINGS[informed[0]], max: DRYER_SETTINGS[informed[informed.length - 1]] };
+  return recs.map((r) => (r.basis === "default" ? { ...r, setting: pick, basis: "room", roomMachines: informed.length, roomRange } : r));
 }
