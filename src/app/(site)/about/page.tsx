@@ -2,17 +2,19 @@ import type { Metadata } from "next";
 import { BackLink, Page } from "@/components/chrome";
 import { StatusBadge } from "@/components/status";
 import { getConfig } from "@/lib/config-server";
+import { homeLinkLabel, resolveHome } from "@/lib/home";
+import { listBuildingsWithRooms } from "@/lib/queries";
 import { WASH_LINKS } from "@/lib/labels";
 
 export const metadata: Metadata = { title: "About" };
 export const dynamic = "force-dynamic";
 
 export default async function About() {
-  const { siteName } = await getConfig();
+  const [{ siteName }, buildings] = await Promise.all([getConfig(), listBuildingsWithRooms()]);
   return (
     <Page>
       <div className="mt-2">
-        <BackLink href="/">Rooms</BackLink>
+        <BackLink href="/">{homeLinkLabel(resolveHome(buildings)) ?? "Rooms"}</BackLink>
         <h1 className="text-title">How it works</h1>
       </div>
       <div className="mt-4 space-y-5 text-body text-text-2 [&_h2]:mb-1 [&_h2]:text-headline [&_h2]:text-text">

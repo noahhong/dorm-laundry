@@ -36,7 +36,7 @@ npm run setup                     # creates local.db, runs migrations, seeds Hed
 npm run dev                       # http://localhost:3000
 ```
 
-- `/` redirects to the only room, `/b/hedrick-summit/laundry`.
+- `/` redirects to the only room, `/b/hedrick-summit/laundry`. The pilot is one building, so building navigation stays hidden until a second building has rooms.
 - Machine pages are at `/m/<code>`. The seed uses readable codes: `hsd1`–`hsd6` for dryers and `hsw1`–`hsw4` for washers. Try `/m/hsd2?r=1` to see what a QR scan opens.
 - Students can add the site to their home screen (it's a PWA), and switch light/dark/auto with the header toggle.
 - On a broken machine, **Notify me when it's fixed** sends one push notification when it works again (needs the `VAPID_*` keys below).

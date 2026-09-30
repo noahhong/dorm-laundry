@@ -8,7 +8,8 @@ import { MachineCard } from "@/components/machine-card";
 import { TONE } from "@/components/status";
 import { assistantConfigured } from "@/lib/assistant-server";
 import { getConfig } from "@/lib/config-server";
-import { getRoom, type MachineView } from "@/lib/queries";
+import { homeLinkLabel, resolveHome } from "@/lib/home";
+import { getRoom, listBuildingsWithRooms, type MachineView } from "@/lib/queries";
 import type { StatusLevel } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -44,8 +45,10 @@ function Summary({ machines }: { machines: MachineView[] }) {
 
 export default async function RoomPage(props: PageProps<"/b/[building]/[room]">) {
   const { building, room } = await props.params;
-  const data = await getRoom(building, room);
+  const [data, buildings] = await Promise.all([getRoom(building, room), listBuildingsWithRooms()]);
   if (!data) notFound();
+  // With one building and one room, "/" is this page, so the back link would go nowhere.
+  const backLabel = homeLinkLabel(resolveHome(buildings), { building, room });
   const now = data.now;
   const dryers = data.machines.filter((m) => m.kind === "dryer");
   const washers = data.machines.filter((m) => m.kind === "washer");
@@ -55,7 +58,11 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
   return (
     <Page>
       <div className="mt-2">
-        <BackLink href="/">{data.building.name}</BackLink>
+        {backLabel ? (
+          <BackLink href="/">{backLabel}</BackLink>
+        ) : (
+          <p className="mt-2 text-caption uppercase tracking-wide text-text-3">{data.building.name}</p>
+        )}
         <h1 className="text-title text-text">{data.room.name}</h1>
         {data.room.locationHint && <p className="text-label text-text-3">{data.room.locationHint}</p>}
       </div>

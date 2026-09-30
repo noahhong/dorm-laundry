@@ -14,7 +14,7 @@ export default function NotFound() {
         <h1 className="mt-3 text-title">Not found</h1>
         <p className="mt-1 text-body text-text-2">That machine or room isn&apos;t in our list. The sticker may be out of date.</p>
         <Link href="/" className="pressable mt-5 inline-flex h-12 items-center rounded-[14px] bg-accent px-5 text-headline text-accent-fg">
-          See all rooms
+          Go to the laundry room
         </Link>
       </div>
     </Page>

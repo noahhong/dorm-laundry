@@ -496,7 +496,7 @@ So every setting the helper names comes from the admin's fabric limits and this 
 
 | Route | Type | Purpose |
 |---|---|---|
-| `/` | server | Building and room picker. Redirects to the only room if there is exactly one room. |
+| `/` | server | Opens the only room when one building has one room (the Hedrick Summit pilot). One building with several rooms lists just its rooms; the building picker only appears once a second building has rooms. Buildings without rooms are ignored. The room page drops its back link when `/` would only loop back to it (`src/lib/home.ts`). |
 | `/b/[building]/[room]` | server + small client filter | Room grid (§9.6 wireframe A) |
 | `/m/[code]` | server + client sheet | Machine detail (B). `?r=1` opens the report sheet (C). This is the QR target. |
 | `/about` | static | How it works, privacy, "not affiliated with WASH" |
