@@ -6,7 +6,7 @@ import type { LoadInput } from "./load-advice";
 
 const KEY = "dl:load";
 const EVENT = "dl:load";
-const SIZES = ["small", "medium", "full"] as const;
+const SIZES = ["small", "medium", "full", "overstuffed"] as const;
 
 /** Raw stored string, so useSyncExternalStore gets a stable snapshot. */
 export function readLoadRaw(): string | null {

@@ -67,7 +67,7 @@ export const LOAD_TOOL = {
     type: "object" as const,
     properties: {
       fabrics: { type: "array", items: { type: "string", enum: [...FABRICS] }, description: "Fabric categories in the load." },
-      size: { type: "string", enum: ["small", "medium", "full", "unknown"], description: "How big the load is, if the resident said." },
+      size: { type: "string", enum: ["small", "medium", "full", "overstuffed", "unknown"], description: "How full the drum will be, if the resident said." },
     },
     required: ["fabrics", "size"],
     additionalProperties: false,
@@ -81,7 +81,7 @@ export function parseLoadToolInput(raw: unknown): LoadInput | null {
   const v = raw as { fabrics?: unknown; size?: unknown };
   if (!Array.isArray(v.fabrics)) return null;
   const fabrics = [...new Set(v.fabrics.filter((f): f is Fabric => FABRICS.includes(f as Fabric)))];
-  const size = v.size === "small" || v.size === "medium" || v.size === "full" ? v.size : null;
+  const size = v.size === "small" || v.size === "medium" || v.size === "full" || v.size === "overstuffed" ? v.size : null;
   return { fabrics, size };
 }
 

@@ -297,6 +297,8 @@ reports
   device_hash   text                 -- sha256(device cookie + secret)
   ip_hash       text                 -- sha256(ip + day + secret); rate limiting only
   trust         real default 1.0     -- 1 anon, 2 verified email (v1), 3 admin
+  damaged_items text (json array) null -- on "damaged": which FABRICS got damaged (v1, §5)
+  damage_kinds  text (json array) null -- on "damaged": melted|shrunk|lost_stretch|print_cracked|scorched|felted|color_bled|torn
   hidden_at     int null             -- moderation
   index(machine_id, created_at), index(device_hash, created_at), index(ip_hash, created_at)
 ```
@@ -304,7 +306,9 @@ reports
 **Enums:**
 
 - **Dryer outcome:** `dry` · `damp` · `wet` · `too_hot` · `damaged` · `not_working`
-- **Washer outcome:** `good` · `soaking` (didn't spin) · `dirty` · `not_working`
+- **Washer outcome:** `good` · `soaking` (didn't spin) · `dirty` · `damaged` (v1) · `not_working`
+
+`report_photos` (v1): `report_id` pk/fk → reports (cascade) · `mime` · `bytes` blob · `created_at`. One optional load photo per report, downscaled on the phone (≤ 1024 px JPEG, ≤ 400 KB, usually 80–200 KB) and re-encoded, which strips EXIF/GPS. Kept in the database so it works with no file storage, locally or on Turso.
 - **Washer symptoms:** `took_money` · `wont_start` · `door_lock` · `wont_drain` · `no_spin` · `leaking` · `no_hot_water` · `stopped_midcycle` · `loud` · `dispenser` · `error_code` · `other`
 - **Dryer symptoms:** `took_money` · `wont_start` · `no_heat` · `too_hot` · `not_tumbling` · `stopped_early` · `burnt_smell` · `lint_screen` · `door` · `loud` · `error_code` · `other`
 
@@ -327,7 +331,7 @@ Each report is one sentence: *"I used **this machine** on **this setting** and i
 | `wet` | caution 0.5; caution 1.0 if High or Medium | under 1.0 |
 | `too_hot` | caution 0.6 (0.3 if High) | over 0.7, good 0.3 |
 | `damaged` | caution 1.0 (0.5 if High) | over 1.5 |
-| `soaking` / `dirty` (washer) | caution 1.0 | – |
+| `soaking` / `dirty` / `damaged` (washer) | caution 1.0 ("Damaged clothes" for `damaged`) | – |
 | `not_working` | broken 1.0 if any broken-severity symptom (or none given), else caution 1.0 | – |
 
 Reasoning:
@@ -436,7 +440,9 @@ Deliberately conservative: Low and Delicates are ignored (damp is expected there
 Status only. Washer settings are recorded (hot/warm/cold) but not learned from reports; §6.7 suggests a water temperature from the load's fabrics.
 
 ### 6.7 Load-based suggestions *(added in v1)*
-An optional "What's in your load?" card on every machine page. The resident taps fabrics (Everyday cotton, Towels & bedding, Jeans, Athletic / stretch, Delicates, Wool & sweaters, Graphic tees) and, on dryers, a load size. It never adds a step to reporting: the picks are kept on the phone and pre-fill the report's "More details".
+An optional "What's in your load?" card on every machine page. The resident taps fabrics (Everyday cotton, Towels & bedding, Jeans, Athletic / stretch, Delicates, Wool & sweaters, Graphic tees) and how full the drum is (Small / Medium / Full / Packed, washers and dryers). It never adds a step to reporting: the picks are kept on the phone and pre-fill the report's "More details".
+
+**In the report** *(v1)*: a "Damaged clothes" report (dryers and washers) asks, optionally, *what* got damaged (the same fabric chips) and *how* (Melted or shiny, Shrunk, Lost stretch, Print cracked, Scorched or yellowed, Felted or pilled, Colors bled, Torn or snagged). Any non-broken report can carry one optional photo of the load, to show how full the drum was. Photos are admin-only by default (Settings → "Show load photos publicly"), served by `/api/photos/[id]`; a hidden or undone report's photo is always admin-only.
 
 Each fabric has two admin-editable limits (Settings → Load advice): the hottest dryer setting and the hottest wash water. Defaults come from the fabric table in §2.2:
 
@@ -824,6 +830,7 @@ Layered, cheapest first:
 - Device IDs are stored only as a hash.
 - Report notes are public. The UI says so, and asks not to include names.
 - Laundry helper questions are sent to Anthropic's API to be answered, and are not stored by the site. The card says the answers come from AI.
+- Load photos are optional, admin-only unless the owner turns on "Show load photos publicly", and re-encoded on the phone so location metadata is never uploaded. Hiding a report hides its photo; deleting a report deletes it.
 - Reports older than 180 days can be purged (they no longer affect results after about 60 days).
 - "Notify me when it's fixed" stores the browser's push endpoint and keys (plus the device hash, for a cap) only until the one notification is sent, the resident cancels, or 90 days pass (§17).
 - `/about` explains all of this and states that the site is **not affiliated with WASH or the university**.
@@ -947,7 +954,7 @@ Nothing the owner might want to change is hard-coded any more.
 **What can be changed**
 | Group | Settings |
 |---|---|
-| Site | name, tagline, announcement banner, notes public/admin-only, untested-dryer suggestion on/off |
+| Site | name, tagline, announcement banner, notes public/admin-only, load photos on/off and public/admin-only, untested-dryer suggestion on/off |
 | Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost |
 | Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
 | Load advice | on/off; per fabric: hottest dryer setting and hottest wash water (§6.7) |

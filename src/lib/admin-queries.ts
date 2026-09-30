@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, gte, isNotNull, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { auditLog, buildings, machines, pushSubscriptions, reports, rooms } from "./db/schema";
+import { auditLog, buildings, machines, pushSubscriptions, reportPhotos, reports, rooms } from "./db/schema";
 import { getConfig } from "./config-server";
 import { listBuildingsWithRooms, machinesForRoom } from "./queries";
 import { SYMPTOM_LABEL } from "./labels";
@@ -189,6 +189,7 @@ const reportSelect = {
   roomId: rooms.id,
   roomName: rooms.name,
   buildingName: buildings.name,
+  hasPhoto: sql<number>`exists(select 1 from ${reportPhotos} where ${reportPhotos.reportId} = ${reports.id})`,
 };
 
 export async function listReports(f: ReportFilters, page: number, pageSize = 25, now = Date.now()) {

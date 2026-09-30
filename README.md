@@ -6,8 +6,10 @@ Finding the best setting for dorm laundry (starting at Hedrick Summit) so no mor
 
 - whether the machine **works** (Works / Caution / Broken / No reports)
 - for dryers, the **setting that actually dries** without cooking your clothes
-- optionally, **what to use for their load**: tap what's in it (athletic wear, towels, wool…) and get the setting for that machine and that load
+- optionally, **what to use for their load**: tap what's in it (athletic wear, towels, wool…) and how full it is, and get the setting for that machine and that load
 - optionally, the **laundry helper**: describe your clothes in your own words ("gym leggings and a wool sweater") and an AI helper tells you which washer and dryer to use and on what setting, using the same rules and this room's reports
+
+A "Damaged clothes" report can say what got damaged and how, and any report can carry an optional photo of the load (admin-only by default).
 
 After a load, they report how it went in **3 taps**, with no login and no app. Status and recommendations come from recent reports, with time decay (see [PLAN.md §6](PLAN.md#6-algorithm-status-and-best-setting)).
 
@@ -49,7 +51,7 @@ To reset the demo data, run `npm run db:seed -- --reset`.
 | **Dashboard** | Reports today / this week with trends, a 14-day chart, top problems, every machine that needs attention (broken, doubtful, weak, never reported), a per-room overview, and the rules currently in effect |
 | **Rooms & machines** | Add, rename and delete buildings and rooms. Per room: which **dryer settings those dryers actually have** (residents can only report, and get recommended, what you tick), minutes per payment, WASH room code. Add machines in bulk, edit, mark out of order / fixed, retire, and **print QR sticker sheets**. Each machine shows how many residents are waiting to hear it's fixed; **Mark fixed** notifies them |
 | **Reports** | Search and filter every report (room, kind, outcome, visible/hidden/undone, period), hide or unhide one or many, and **download a CSV** |
-| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; the laundry helper chat on/off and its limits; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
+| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; load photos on/off and public or admin-only; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; the laundry helper chat on/off and its limits; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
 | **Activity log** | Who-did-what record of every admin action, including before → after for each setting |
 
 Settings are stored in the database, not in code, so they survive deploys and apply to the public pages immediately. Secrets (admin password, bot-check keys) stay in environment variables.

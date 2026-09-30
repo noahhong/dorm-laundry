@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { buildings, machineRuns, machines, reports, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
+import { buildings, machineRuns, machines, reportPhotos, reports, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
 import { deviceHash } from "./device";
 import { getConfig } from "./config-server";
 import { toParams, type Config } from "./config";
@@ -144,7 +144,10 @@ export async function getRoomById(roomId: string, now = Date.now(), opts: { incl
   return { ...row, machines: await machinesForRoom(row.room, now, opts), offered: offeredSettings(row.room.dryerSettings), now };
 }
 
-export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "fabrics" | "note">;
+export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "fabrics" | "damagedItems" | "damageKinds" | "note"> & {
+  /** True when the report has a load photo and photos are public (served at /api/photos/[id]). */
+  hasPhoto: boolean;
+};
 
 export async function getMachine(code: string, now = Date.now()) {
   const db = getDb();
@@ -167,10 +170,14 @@ export async function getMachine(code: string, now = Date.now()) {
     const inRoom = (await machinesForRoom(row.room, now, { includeRetired: true }, config)).find((m) => m.id === view.id);
     if (inRoom) view = { ...view, recommendation: inRoom.recommendation, weak: inRoom.weak };
   }
-  const recent: PublicReport[] = [...rs]
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 20)
-    .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, fabrics, note }) => ({
+  const latest = [...rs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
+  const withPhoto = new Set<string>();
+  if (config.photosPublic && latest.length > 0) {
+    const ids = await db.select({ id: reportPhotos.reportId }).from(reportPhotos).where(inArray(reportPhotos.reportId, latest.map((r) => r.id)));
+    for (const { id } of ids) withPhoto.add(id);
+  }
+  const recent: PublicReport[] = latest
+    .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, fabrics, damagedItems, damageKinds, note }) => ({
       id,
       createdAt,
       outcome,
@@ -180,6 +187,9 @@ export async function getMachine(code: string, now = Date.now()) {
       minutes,
       loadSize,
       fabrics,
+      damagedItems,
+      damageKinds,
+      hasPhoto: withPhoto.has(id),
       // Admins can keep residents' free text private (Settings → "Show report notes publicly").
       note: config.notesPublic ? note : null,
     }));

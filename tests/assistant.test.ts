@@ -96,6 +96,9 @@ describe("parseLoadToolInput", () => {
   it("keeps known fabrics once and maps an unknown size to none", () => {
     expect(parseLoadToolInput({ fabrics: ["wool", "wool", "leather"], size: "unknown" })).toEqual({ fabrics: ["wool"], size: null });
   });
+  it("accepts an overstuffed load", () => {
+    expect(parseLoadToolInput({ fabrics: ["towels"], size: "overstuffed" })).toEqual({ fabrics: ["towels"], size: "overstuffed" });
+  });
   it("rejects input without a fabric list", () => {
     expect(parseLoadToolInput({ size: "small" })).toBeNull();
     expect(parseLoadToolInput(null)).toBeNull();
