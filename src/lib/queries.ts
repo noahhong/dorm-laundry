@@ -1,12 +1,13 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { buildings, machines, reports, rooms, type Machine, type Report, type Room } from "./db/schema";
+import { buildings, machineRuns, machines, reports, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
+import { deviceHash } from "./device";
 import { getConfig } from "./config-server";
 import { toParams, type Config } from "./config";
 import type { DryerSetting } from "./labels";
 import { offeredSettings } from "./rooms";
-import { applyRoomFallback, computeStatus, detectWeakDryers, recommendSetting, type MachineStatus, type Params, type Recommendation, type WeakDryer } from "./status";
+import { applyRoomFallback, computeStatus, currentRun, defaultRunMinutes, detectWeakDryers, recommendSetting, type InUse, type MachineStatus, type Params, type Recommendation, type WeakDryer } from "./status";
 
 export interface MachineView {
   id: string;
@@ -20,9 +21,11 @@ export interface MachineView {
   recommendation: Recommendation | null;
   /** Set when this dryer dries much worse than the others in its room. */
   weak: WeakDryer | null;
+  /** Someone tapped "I started it" and the estimate hasn't expired yet. */
+  inUse: InUse | null;
 }
 
-function toView(m: Machine, rs: Report[], now: number, params: Params, offered: DryerSetting[]): MachineView {
+function toView(m: Machine, rs: Report[], runs: MachineRun[], now: number, params: Params, offered: DryerSetting[], viewer: string | null): MachineView {
   const input = rs.filter((r) => !r.hiddenAt);
   return {
     id: m.id,
@@ -35,7 +38,25 @@ function toView(m: Machine, rs: Report[], now: number, params: Params, offered: 
     status: computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, input, now, params),
     recommendation: m.kind === "dryer" ? recommendSetting(input, now, params, offered) : null,
     weak: null,
+    // A retired or out-of-order machine isn't anyone's to wait for.
+    inUse: m.retiredAt || m.adminState === "out_of_order" ? null : currentRun(runs, now, params, viewer),
   };
+}
+
+/** Recent runs per machine: anything that could still be showing (the longest cycle plus grace is well under a day). */
+async function runsFor(machineIds: string[], now: number) {
+  const byMachine = new Map<string, MachineRun[]>();
+  if (machineIds.length === 0) return byMachine;
+  const rows = await getDb()
+    .select()
+    .from(machineRuns)
+    .where(and(inArray(machineRuns.machineId, machineIds), gte(machineRuns.startedAt, now - 24 * 3_600_000)));
+  for (const r of rows) {
+    const list = byMachine.get(r.machineId) ?? [];
+    list.push(r);
+    byMachine.set(r.machineId, list);
+  }
+  return byMachine;
 }
 
 async function reportsFor(machineIds: string[], now: number, windowMs: number) {
@@ -72,12 +93,9 @@ export async function machinesForRoom(room: Room, now: number, { includeRetired 
     .from(machines)
     .where(includeRetired ? eq(machines.roomId, roomId) : and(eq(machines.roomId, roomId), isNull(machines.retiredAt)))
     .orderBy(asc(machines.position), asc(machines.label));
-  const rs = await reportsFor(
-    ms.map((m) => m.id),
-    now,
-    params.windowMs,
-  );
-  const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now, params, offered), retiredAt: m.retiredAt, position: m.position }));
+  const ids = ms.map((m) => m.id);
+  const [rs, runs, viewer] = await Promise.all([reportsFor(ids, now, params.windowMs), runsFor(ids, now), deviceHash({ create: false })]);
+  const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], runs.get(m.id) ?? [], now, params, offered, viewer), retiredAt: m.retiredAt, position: m.position }));
   const resetAt = new Map(ms.map((m) => [m.id, m.statusResetAt ?? 0]));
   // Broken dryers are already flagged, and their wet loads would skew the room's baseline, so they sit this out.
   const weak = detectWeakDryers(
@@ -141,8 +159,9 @@ export async function getMachine(code: string, now = Date.now()) {
   const config = await getConfig();
   const params = toParams(config);
   const offered = offeredSettings(row.room.dryerSettings);
-  const rs = (await reportsFor([row.machine.id], now, params.windowMs)).get(row.machine.id) ?? [];
-  let view = toView(row.machine, rs, now, params, offered);
+  const [byMachine, runs, viewer] = await Promise.all([reportsFor([row.machine.id], now, params.windowMs), runsFor([row.machine.id], now), deviceHash({ create: false })]);
+  const rs = byMachine.get(row.machine.id) ?? [];
+  let view = toView(row.machine, rs, runs.get(row.machine.id) ?? [], now, params, offered, viewer);
   if (view.kind === "dryer") {
     // Room context (sibling fallback and outlier detection) only applies to dryers.
     const inRoom = (await machinesForRoom(row.room, now, { includeRetired: true }, config)).find((m) => m.id === view.id);
@@ -164,7 +183,8 @@ export async function getMachine(code: string, now = Date.now()) {
       // Admins can keep residents' free text private (Settings → "Show report notes publicly").
       note: config.notesPublic ? note : null,
     }));
-  return { ...row, view, recent, retired: row.machine.retiredAt != null, offered, config, now };
+  const runMinutes = defaultRunMinutes(row.machine.kind, row.room.minutesPerCycle, params);
+  return { ...row, view, recent, retired: row.machine.retiredAt != null, offered, config, runMinutes, now };
 }
 
 export async function recentReportsForRoom(roomId: string, limit = 40) {
@@ -175,4 +195,20 @@ export async function recentReportsForRoom(roomId: string, limit = 40) {
     .where(and(eq(machines.roomId, roomId), isNull(reports.undoneAt)))
     .orderBy(desc(reports.createdAt))
     .limit(limit);
+}
+
+/** Just the status of one machine (no room context), for deciding whether it counts as fixed. */
+export async function machineStatusById(machineId: string, now = Date.now()) {
+  const [row] = await getDb()
+    .select({ machine: machines, roomName: rooms.name })
+    .from(machines)
+    .innerJoin(rooms, eq(machines.roomId, rooms.id))
+    .where(eq(machines.id, machineId))
+    .limit(1);
+  if (!row) return null;
+  const params = toParams(await getConfig());
+  const rs = (await reportsFor([machineId], now, params.windowMs)).get(machineId) ?? [];
+  const m = row.machine;
+  const status = computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, rs, now, params);
+  return { machine: m, roomName: row.roomName, status };
 }

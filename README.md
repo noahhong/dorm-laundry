@@ -37,6 +37,7 @@ npm run dev                       # http://localhost:3000
 - `/` redirects to the only room, `/b/hedrick-summit/laundry`.
 - Machine pages are at `/m/<code>`. The seed uses readable codes: `hsd1`–`hsd6` for dryers and `hsw1`–`hsw4` for washers. Try `/m/hsd2?r=1` to see what a QR scan opens.
 - Students can add the site to their home screen (it's a PWA), and switch light/dark/auto with the header toggle.
+- On a broken machine, **Notify me when it's fixed** sends one push notification when it works again (needs the `VAPID_*` keys below).
 - Admin is at `/admin`, using the password from `ADMIN_PASSWORD` (see below).
 
 To reset the demo data, run `npm run db:seed -- --reset`.
@@ -46,7 +47,7 @@ To reset the demo data, run `npm run db:seed -- --reset`.
 | Page | What you can do |
 |---|---|
 | **Dashboard** | Reports today / this week with trends, a 14-day chart, top problems, every machine that needs attention (broken, doubtful, weak, never reported), a per-room overview, and the rules currently in effect |
-| **Rooms & machines** | Add, rename and delete buildings and rooms. Per room: which **dryer settings those dryers actually have** (residents can only report, and get recommended, what you tick), minutes per payment, WASH room code. Add machines in bulk, edit, mark out of order / fixed, retire, and **print QR sticker sheets** |
+| **Rooms & machines** | Add, rename and delete buildings and rooms. Per room: which **dryer settings those dryers actually have** (residents can only report, and get recommended, what you tick), minutes per payment, WASH room code. Add machines in bulk, edit, mark out of order / fixed, retire, and **print QR sticker sheets**. Each machine shows how many residents are waiting to hear it's fixed; **Mark fixed** notifies them |
 | **Reports** | Search and filter every report (room, kind, outcome, visible/hidden/undone, period), hide or unhide one or many, and **download a CSV** |
 | **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; the laundry helper chat on/off and its limits; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
 | **Activity log** | Who-did-what record of every admin action, including before → after for each setting |
@@ -80,6 +81,8 @@ Settings are stored in the database, not in code, so they survive deploys and ap
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional | Turns on the invisible Cloudflare Turnstile bot check for reports. Both must be set; leave empty to disable. |
 | `ANTHROPIC_API_KEY` | optional | Turns on the laundry helper chat (get a key at console.anthropic.com). Leave empty to hide it. Admins can also switch it off and cap its use in Settings. |
 | `ANTHROPIC_MODEL` | optional | The Claude model for the helper. Defaults to `claude-opus-5-5`; `claude-sonnet-5-5` costs about half. |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Turns on "Notify me when it's fixed" (Web Push). Generate once with `npx web-push generate-vapid-keys`; both must be set. Changing them drops every pending alert. |
+| `VAPID_SUBJECT` | optional | Contact the push services can reach you at: `mailto:you@example.com` or your `https://` site. Defaults to `PUBLIC_BASE_URL`. |
 
 ## Deploy (Vercel + Turso, both free tiers)
 
@@ -103,6 +106,7 @@ Settings are stored in the database, not in code, so they survive deploys and ap
    - In Project → Settings → Functions, pick the region closest to your Turso database (e.g. `sfo1` for `lax`).
 4. **Custom domain** (optional). Set `PUBLIC_BASE_URL` to it **before** printing QR codes, so stickers never point at a preview URL.
 5. (Optional) If spam shows up, create a free Turnstile widget in the Cloudflare dashboard for your domain and set both `TURNSTILE_*` variables.
+   (Optional) For "Notify me when it's fixed", run `npx web-push generate-vapid-keys` once and set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. On iPhone, residents must add the site to their Home Screen first (iOS 16.4+); the page tells them how.
 6. Run `npm run preflight` with the same variables to confirm everything is set, then check `https://your-domain/api/health` returns `{"ok":true}` after the deploy.
 7. Open `/admin`, then **Settings** to set your site name and rules, and **Rooms & machines** to add your rooms and tick the dryer settings they have. Label machines to match their physical numbers. Then open **Print QR sheet**, print at 100% on US Letter, cut, and stick one near each machine's controls.
 
@@ -114,7 +118,7 @@ Schema changes: edit `src/lib/db/schema.ts`, run `npm run db:generate`, commit t
 
 ```
 src/app/                 routes: / · /b/[building]/[room] · /m/[code] · /about · /admin/** · /api/**
-src/app/actions.ts       submitReport / undoReport (Server Actions)
+src/app/actions.ts       submitReport / undoReport, watchForFix (Server Actions)
 src/app/admin/actions.ts admin mutations (password-protected)
 src/components/          StatusBadge, SettingChip, MachineCard, HeatLadder, LoadAdvice, LaundryHelper, ReportSheet, icons
 src/lib/status.ts        the status and best-setting algorithm (pure, unit-tested)
@@ -123,6 +127,8 @@ src/lib/assistant*.ts    the laundry helper: prompt, plan_load tool and ranking 
 src/lib/labels.ts        enums, human copy, WASH help links
 src/lib/queries.ts       DB loaders that attach computed status
 src/lib/device.ts        anonymous device cookie, hashed IP, rate limits
+src/lib/push*.ts         "notify me when it's fixed": rules (pure) and sending (web-push)
+public/sw.js             service worker that shows those notifications (no caching)
 drizzle/                 SQL migrations
 scripts/                 migrate and seed
 tests/                   Vitest unit tests and Playwright e2e

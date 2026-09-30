@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import webpush from "web-push";
 
 const PORT = 3100;
 const MOCK_PORT = 3101;
+// Throwaway VAPID keys so the "notify me when it's fixed" UI is on during e2e.
+const vapid = webpush.generateVAPIDKeys();
 const env = {
   DATABASE_URL: "file:e2e.db",
   ADMIN_PASSWORD: "e2e-password",
@@ -10,6 +13,8 @@ const env = {
   // The laundry helper talks to a local stand-in for the Claude API (tests/e2e/mock-anthropic.mjs).
   ANTHROPIC_API_KEY: "e2e-mock-key",
   ANTHROPIC_BASE_URL: `http://localhost:${MOCK_PORT}`,
+  VAPID_PUBLIC_KEY: vapid.publicKey,
+  VAPID_PRIVATE_KEY: vapid.privateKey,
 };
 
 export default defineConfig({

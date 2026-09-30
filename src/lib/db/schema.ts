@@ -80,6 +80,29 @@ export const reports = sqliteTable(
   ],
 );
 
+/** "I started it": a resident marks a machine as running so others see when it should be free. Auto-expires via ends_at. */
+export const machineRuns = sqliteTable(
+  "machine_runs",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "cascade" }),
+    startedAt: integer("started_at").notNull(),
+    /** Estimated finish: started_at + the minutes the resident picked. */
+    endsAt: integer("ends_at").notNull(),
+    /** Set when the starter cancels, reports how it went, or a newer run replaces it. */
+    endedAt: integer("ended_at"),
+    deviceHash: text("device_hash").notNull(),
+    ipHash: text("ip_hash").notNull(),
+  },
+  (t) => [
+    index("machine_runs_machine_time").on(t.machineId, t.startedAt),
+    index("machine_runs_device_time").on(t.deviceHash, t.startedAt),
+    index("machine_runs_ip_time").on(t.ipHash, t.startedAt),
+  ],
+);
+
 /** Failed admin logins by salted IP hash, for brute-force throttling that works across serverless instances. */
 export const loginFailures = sqliteTable(
   "login_failures",
@@ -111,7 +134,31 @@ export const auditLog = sqliteTable(
   (t) => [index("audit_log_at").on(t.at)],
 );
 
+/** Browsers waiting for a broken machine to be fixed (Web Push). One-shot: deleted once notified or cancelled. */
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** Same hash as reports.device_hash; caps how many machines one phone can watch. */
+    deviceHash: text("device_hash").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("push_subscriptions_machine_endpoint").on(t.machineId, t.endpoint),
+    index("push_subscriptions_device").on(t.deviceHash),
+    index("push_subscriptions_created").on(t.createdAt),
+  ],
+);
+
 export type Building = typeof buildings.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type Machine = typeof machines.$inferSelect;
 export type Report = typeof reports.$inferSelect;
+export type MachineRun = typeof machineRuns.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

@@ -1,15 +1,19 @@
 "use server";
 
-import { and, eq, gte, isNull } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { getDb } from "@/lib/db";
-import { buildings, machines, reports, rooms } from "@/lib/db/schema";
+import { buildings, machineRuns, machines, pushSubscriptions, reports, rooms } from "@/lib/db/schema";
 import { getConfig } from "@/lib/config-server";
 import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
+import { notifyIfFixed, pruneExpiredWatches, pushPublicKey, watcherCount } from "@/lib/push";
+import { canWatch, MAX_WATCHERS_PER_MACHINE, MAX_WATCHES_PER_DEVICE, pushSubscriptionSchema } from "@/lib/push-rules";
+import { machineStatusById } from "@/lib/queries";
 import { offeredSettings } from "@/lib/rooms";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
-import { checkForKind, reportSchema, type ReportPayload } from "@/lib/validation";
+import { checkForKind, reportSchema, runSchema, type ReportPayload, type RunPayload } from "@/lib/validation";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -72,7 +76,14 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
     ipHash: ip,
     trust: 1,
   });
+  // Reporting how it went means this device's load is out, so its "I started it" timer is done.
+  await db
+    .update(machineRuns)
+    .set({ endedAt: now })
+    .where(and(eq(machineRuns.machineId, machine.id), eq(machineRuns.deviceHash, device), isNull(machineRuns.endedAt), gt(machineRuns.endsAt, now - 24 * 3_600_000)));
   await revalidateMachine(machine.id);
+  // A "works now" report may be the fix people are waiting for; send pushes after the response.
+  if (pushPublicKey()) after(() => notifyIfFixed(machine.id));
   return { ok: true, id };
 }
 
@@ -90,4 +101,108 @@ export async function undoReport(id: string): Promise<ActionResult> {
   if (deleted.length === 0) return { ok: false, error: "Too late to undo that one." };
   await revalidateMachine(deleted[0].machineId);
   return { ok: true, id };
+}
+
+/** "I started it": mark a machine as running so others can see roughly when it will be free. */
+export async function startRun(payload: RunPayload): Promise<ActionResult> {
+  const parsed = runSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, error: "Pick how many minutes it will run (5 to 120)." };
+  const { code, minutes } = parsed.data;
+  const db = getDb();
+  const [machine] = await db.select().from(machines).where(eq(machines.code, code)).limit(1);
+  if (!machine || machine.retiredAt) return { ok: false, error: "That machine isn't in our list anymore." };
+  if (machine.adminState === "out_of_order") return { ok: false, error: "This machine is marked out of order." };
+
+  const config = await getConfig();
+  const now = Date.now();
+  const device = (await deviceHash({ create: true }))!;
+  const ip = await ipHash(now);
+  // Same daily caps as reports, counted separately so starting a machine never eats into your reports.
+  const dayAgo = now - 24 * 3_600_000;
+  const [byDevice] = await db.select({ n: count() }).from(machineRuns).where(and(eq(machineRuns.deviceHash, device), gte(machineRuns.startedAt, dayAgo)));
+  if (byDevice.n >= config.rateDevicePerDay) return { ok: false, error: "That's a lot of machines today. Try again tomorrow." };
+  const [byIp] = await db.select({ n: count() }).from(machineRuns).where(and(eq(machineRuns.ipHash, ip), gte(machineRuns.startedAt, dayAgo)));
+  if (byIp.n >= config.rateIpPerDay) return { ok: false, error: "Too many timers from this network today." };
+
+  // The newest run is the one that shows; close out older open ones so the history stays tidy.
+  await db.update(machineRuns).set({ endedAt: now }).where(and(eq(machineRuns.machineId, machine.id), isNull(machineRuns.endedAt)));
+  const id = randomId();
+  await db.insert(machineRuns).values({ id, machineId: machine.id, startedAt: now, endsAt: now + minutes * 60_000, deviceHash: device, ipHash: ip });
+  await revalidateMachine(machine.id);
+  return { ok: true, id };
+}
+
+/** The starter takes their timer back (wrong machine, or the load finished early). */
+export async function endRun(id: string): Promise<ActionResult> {
+  const device = await deviceHash({ create: false });
+  if (!device || typeof id !== "string") return { ok: false, error: "Can't stop that timer." };
+  const ended = await getDb()
+    .update(machineRuns)
+    .set({ endedAt: Date.now() })
+    .where(and(eq(machineRuns.id, id), eq(machineRuns.deviceHash, device), isNull(machineRuns.endedAt)))
+    .returning({ machineId: machineRuns.machineId });
+  if (ended.length === 0) return { ok: false, error: "That timer already ended." };
+  await revalidateMachine(ended[0].machineId);
+  return { ok: true, id };
+}
+
+export type WatchResult = { ok: true } | { ok: false; error: string };
+
+async function watchableMachine(code: unknown) {
+  if (typeof code !== "string" || code.length > 32) return null;
+  const [m] = await getDb().select({ id: machines.id }).from(machines).where(eq(machines.code, code)).limit(1);
+  return m ?? null;
+}
+
+/** "Notify me when it's fixed": store this browser's push subscription for one broken machine. */
+export async function watchForFix(code: string, subscription: unknown): Promise<WatchResult> {
+  if (!pushPublicKey()) return { ok: false, error: "Notifications aren't set up on this site." };
+  const parsed = pushSubscriptionSchema.safeParse(subscription);
+  if (!parsed.success) return { ok: false, error: "This browser's notification service isn't supported." };
+  const m = await watchableMachine(code);
+  const info = m && (await machineStatusById(m.id));
+  if (!info || info.machine.retiredAt) return { ok: false, error: "That machine isn't in our list anymore." };
+  if (!canWatch(info.status.level)) return { ok: false, error: "It isn't marked broken right now." };
+
+  const db = getDb();
+  const now = Date.now();
+  await pruneExpiredWatches(now);
+  const device = (await deviceHash({ create: true }))!;
+  const { endpoint, keys } = parsed.data;
+  const [existing] = await db
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(and(eq(pushSubscriptions.machineId, info.machine.id), eq(pushSubscriptions.endpoint, endpoint)));
+  if (existing) {
+    await db.update(pushSubscriptions).set({ p256dh: keys.p256dh, auth: keys.auth }).where(eq(pushSubscriptions.id, existing.id));
+    return { ok: true };
+  }
+  const [{ n: mine }] = await db.select({ n: count() }).from(pushSubscriptions).where(eq(pushSubscriptions.deviceHash, device));
+  if (mine >= MAX_WATCHES_PER_DEVICE) return { ok: false, error: `You're already waiting on ${MAX_WATCHES_PER_DEVICE} machines.` };
+  if ((await watcherCount(info.machine.id)) >= MAX_WATCHERS_PER_MACHINE) return { ok: false, error: "Too many people are waiting on this one. Check back later." };
+  await db
+    .insert(pushSubscriptions)
+    .values({ id: randomId(), machineId: info.machine.id, endpoint, p256dh: keys.p256dh, auth: keys.auth, deviceHash: device, createdAt: now })
+    .onConflictDoNothing();
+  return { ok: true };
+}
+
+/** Cancel a watch. Knowing the (unguessable) endpoint is the proof of ownership. */
+export async function stopWatchingForFix(code: string, endpoint: string): Promise<WatchResult> {
+  const m = await watchableMachine(code);
+  if (m && typeof endpoint === "string") {
+    await getDb().delete(pushSubscriptions).where(and(eq(pushSubscriptions.machineId, m.id), eq(pushSubscriptions.endpoint, endpoint)));
+  }
+  return { ok: true };
+}
+
+/** Is this browser already waiting on this machine? */
+export async function isWatchingForFix(code: string, endpoint: string): Promise<boolean> {
+  const m = await watchableMachine(code);
+  if (!m || typeof endpoint !== "string") return false;
+  const [row] = await getDb()
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(and(eq(pushSubscriptions.machineId, m.id), eq(pushSubscriptions.endpoint, endpoint)));
+  return Boolean(row);
 }

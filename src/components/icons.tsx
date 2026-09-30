@@ -139,6 +139,12 @@ export const AlertIcon = ({ size = 16, ...p }: P) => (
     <path d="M12 10v4m0 3h.01" />
   </svg>
 );
+export const BellIcon = ({ size = 20, ...p }: P) => (
+  <svg {...base(size, p)}>
+    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+  </svg>
+);
 export const ExternalIcon = ({ size = 14, ...p }: P) => (
   <svg {...base(size, p)}>
     <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
@@ -150,5 +156,12 @@ export const QrIcon = ({ size = 18, ...p }: P) => (
     <rect x="14" y="3" width="7" height="7" rx="1" />
     <rect x="3" y="14" width="7" height="7" rx="1" />
     <path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
+  </svg>
+);
+
+export const ClockIcon = ({ size = 16, ...p }: P) => (
+  <svg {...base(size, p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
   </svg>
 );
