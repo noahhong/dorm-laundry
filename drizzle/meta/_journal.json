@@ -15,6 +15,13 @@
       "when": 1790791266177,
       "tag": "0001_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790792507392,
+      "tag": "0002_admin_config",
+      "breakpoints": true
     }
   ]
 }
