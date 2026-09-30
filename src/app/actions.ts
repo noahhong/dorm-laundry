@@ -4,14 +4,15 @@ import { and, eq, gte, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { buildings, machines, reports, rooms } from "@/lib/db/schema";
+import { getConfig } from "@/lib/config-server";
 import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
+import { offeredSettings } from "@/lib/rooms";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
 import { checkForKind, reportSchema, type ReportPayload } from "@/lib/validation";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
-const UNDO_WINDOW_MS = 5 * 60_000;
 
 async function revalidateMachine(machineId: string) {
   const [row] = await getDb()
@@ -30,7 +31,8 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
   if (!parsed.success) return { ok: false, error: "Something about that report didn't look right." };
   const p = parsed.data;
   // Bots: pretend success so they don't retry, but store nothing.
-  if (p.website || p.elapsedMs < 800) return { ok: true, id: "ignored" };
+  const config = await getConfig();
+  if (p.website || p.elapsedMs < config.minElapsedMs) return { ok: true, id: "ignored" };
   if (turnstileEnabled() && !(await verifyTurnstile(p.turnstileToken, await clientIp()))) {
     return { ok: false, error: "Couldn't confirm you're human. Wait a second and try again." };
   }
@@ -39,13 +41,18 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
   const [machine] = await db.select().from(machines).where(eq(machines.code, p.code)).limit(1);
   if (!machine || machine.retiredAt) return { ok: false, error: "That machine isn't in our list anymore." };
 
-  const kindError = checkForKind(machine.kind, p);
+  const [room] = await db.select({ dryerSettings: rooms.dryerSettings }).from(rooms).where(eq(rooms.id, machine.roomId)).limit(1);
+  const kindError = checkForKind(machine.kind, p, offeredSettings(room?.dryerSettings));
   if (kindError) return { ok: false, error: kindError };
 
   const now = Date.now();
   const device = (await deviceHash({ create: true }))!;
   const ip = await ipHash(now);
-  const limited = await checkRateLimit(db, { device, ip, machineId: machine.id, now });
+  const limited = await checkRateLimit(
+    db,
+    { device, ip, machineId: machine.id, now },
+    { perMachineMs: config.rateMachineMinutes * 60_000, perDevicePerDay: config.rateDevicePerDay, perIpPerDay: config.rateIpPerDay },
+  );
   if (limited) return { ok: false, error: limited };
 
   const id = randomId();
@@ -77,7 +84,7 @@ export async function undoReport(id: string): Promise<ActionResult> {
   const deleted = await db
     .update(reports)
     .set({ undoneAt: Date.now() })
-    .where(and(eq(reports.id, id), eq(reports.deviceHash, device), isNull(reports.undoneAt), gte(reports.createdAt, Date.now() - UNDO_WINDOW_MS)))
+    .where(and(eq(reports.id, id), eq(reports.deviceHash, device), isNull(reports.undoneAt), gte(reports.createdAt, Date.now() - (await getConfig()).undoWindowMinutes * 60_000)))
     .returning({ machineId: reports.machineId });
   if (deleted.length === 0) return { ok: false, error: "Too late to undo that one." };
   await revalidateMachine(deleted[0].machineId);

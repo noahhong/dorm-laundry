@@ -2,12 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Page } from "@/components/chrome";
 import { ChevronRight, QrIcon } from "@/components/icons";
+import { getConfig } from "@/lib/config-server";
 import { listBuildingsWithRooms } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const buildings = await listBuildingsWithRooms();
+  const [buildings, { tagline }] = await Promise.all([listBuildingsWithRooms(), getConfig()]);
   const allRooms = buildings.flatMap((b) => b.rooms.map((r) => ({ ...r, building: b })));
   if (allRooms.length === 1) {
     const r = allRooms[0];
@@ -16,7 +17,7 @@ export default async function Home() {
   return (
     <Page>
       <h1 className="mt-6 text-title text-text">Laundry rooms</h1>
-      <p className="mt-1 text-body text-text-2">Which machines work, and the dryer setting that won&apos;t wreck your clothes.</p>
+      <p className="mt-1 text-body text-text-2">{tagline}</p>
 
       {buildings.length === 0 ? (
         <div className="mt-8 rounded-[var(--radius-md)] border border-dashed border-border-strong/50 bg-surface p-6 text-center">

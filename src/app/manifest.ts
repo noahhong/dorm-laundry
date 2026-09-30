@@ -1,10 +1,14 @@
 import type { MetadataRoute } from "next";
+import { getConfig } from "@/lib/config-server";
 
-export default function manifest(): MetadataRoute.Manifest {
+export const dynamic = "force-dynamic";
+
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const { siteName, tagline } = await getConfig();
   return {
-    name: "Dorm Laundry",
-    short_name: "Laundry",
-    description: "Which laundry machines work, and the dryer setting that won't wreck your clothes.",
+    name: siteName,
+    short_name: siteName.length > 12 ? siteName.slice(0, 12).trim() : siteName,
+    description: tagline,
     start_url: "/",
     display: "standalone",
     background_color: "#f6f7f9",

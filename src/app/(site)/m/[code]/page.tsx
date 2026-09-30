@@ -169,6 +169,9 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
               </p>
             </div>
           </div>
+          {room.minutesPerCycle ? (
+            <p className="mt-2 text-caption text-text-3">One payment runs about {room.minutesPerCycle} minutes on the dryers here.</p>
+          ) : null}
           {(rec.tips.length > 0 || rec.avoid.length > 0) && (
             <ul className="mt-3 space-y-1.5">
               {rec.avoid.map((a) => (
@@ -238,6 +241,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
           machine={{ code: machine.code, label: machine.label, kind: machine.kind, level: s.level, reason: s.reason }}
           autoOpen={sp.r === "1"}
           turnstileSiteKey={turnstileSiteKey()}
+          dryerSettings={machine.kind === "dryer" ? data.offered : undefined}
         />
       )}
     </Page>

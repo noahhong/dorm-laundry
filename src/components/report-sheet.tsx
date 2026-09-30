@@ -23,6 +23,8 @@ type Props = {
   autoOpen?: boolean;
   /** Cloudflare Turnstile site key; when set, each report carries a bot-check token. */
   turnstileSiteKey?: string;
+  /** Dryer settings this room's dryers have (coolest first); the sheet offers exactly these. */
+  dryerSettings?: readonly string[];
 };
 
 type Tone = "works" | "caution" | "broken";
@@ -59,7 +61,7 @@ function writeLast(kind: MachineKind, v: string) {
   } catch {}
 }
 
-export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey }: Props) {
+export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey, dryerSettings }: Props) {
   const [open, setOpen] = useState(autoOpen);
   const [toast, setToast] = useState<{ text: string; id?: string; tone: "ok" | "err" } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +112,7 @@ export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey }: Pro
         <Sheet
           machine={machine}
           turnstileSiteKey={turnstileSiteKey}
+          dryerSettings={dryerSettings}
           onClose={close}
           onDone={(id) => {
             close();
@@ -147,11 +150,13 @@ export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey }: Pro
 function Sheet({
   machine,
   turnstileSiteKey,
+  dryerSettings,
   onClose,
   onDone,
 }: {
   machine: Props["machine"];
   turnstileSiteKey?: string;
+  dryerSettings?: readonly string[];
   onClose: () => void;
   onDone: (id: string) => void;
 }) {
@@ -179,7 +184,7 @@ function Sheet({
 
   const isDryer = machine.kind === "dryer";
   const outcomes: readonly string[] = isDryer ? DRYER_OUTCOMES : WASHER_OUTCOMES;
-  const settings: readonly string[] = isDryer ? [...DRYER_SETTINGS].reverse() : WASHER_SETTINGS;
+  const settings: readonly string[] = isDryer ? [...(dryerSettings ?? DRYER_SETTINGS)].reverse() : WASHER_SETTINGS;
   const flagged = machine.level === "broken" || machine.level === "caution";
 
   useEffect(() => {
@@ -382,7 +387,8 @@ function Sheet({
                   <legend className="mb-2 text-label font-semibold text-text-2">
                     {isDryer ? "Which setting did you use?" : "Water temperature (optional)"}
                   </legend>
-                  <div role="radiogroup" aria-label="Setting" className={`grid gap-1 rounded-[14px] bg-surface-2 p-1 ${isDryer ? "grid-cols-5" : "grid-cols-3"}`}>
+                  <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(0, 1fr))` }}
+                    className="grid gap-1 rounded-[14px] bg-surface-2 p-1">
                     {settings.map((s, i) => (
                       <button
                         key={s}

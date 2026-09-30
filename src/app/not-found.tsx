@@ -1,9 +1,13 @@
 import Link from "next/link";
-import { Page } from "@/components/chrome";
+import { AppHeader, Page } from "@/components/chrome";
 import { StatusIcon } from "@/components/icons";
+
+export const dynamic = "force-dynamic";
 
 export default function NotFound() {
   return (
+    <>
+    <AppHeader />
     <Page className="grid place-items-center text-center">
       <div className="mt-16">
         <StatusIcon level="unknown" size={48} className="mx-auto text-unknown-icon" />
@@ -14,5 +18,6 @@ export default function NotFound() {
         </Link>
       </div>
     </Page>
+    </>
   );
 }

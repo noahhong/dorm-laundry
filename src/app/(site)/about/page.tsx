@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import { BackLink, Page } from "@/components/chrome";
 import { StatusBadge } from "@/components/status";
+import { getConfig } from "@/lib/config-server";
 import { WASH_LINKS } from "@/lib/labels";
 
 export const metadata: Metadata = { title: "About" };
+export const dynamic = "force-dynamic";
 
-export default function About() {
+export default async function About() {
+  const { siteName } = await getConfig();
   return (
     <Page>
       <div className="mt-2">
@@ -58,7 +61,7 @@ export default function About() {
           </p>
         </section>
         <p className="rounded-[12px] bg-surface-2 p-3 text-label">
-          Dorm Laundry is an independent student project. It is not affiliated with WASH Multifamily Laundry Systems or any university.
+          {siteName} is an independent student project. It is not affiliated with WASH Multifamily Laundry Systems or any university.
         </p>
       </div>
     </Page>
