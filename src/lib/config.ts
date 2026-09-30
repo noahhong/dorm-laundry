@@ -30,7 +30,7 @@ export const GROUPS = [
   { id: "load", title: "Load advice", blurb: "Limits per fabric for “What's in your load?”. A dryer's own learned setting is used unless the load needs something cooler." },
   { id: "assistant", title: "Laundry helper chat", blurb: "An AI chat on room and machine pages that turns “what I'm washing” into a machine and setting, using the rules above. Only shows when the server has an ANTHROPIC_API_KEY." },
   { id: "outliers", title: "Weak-dryer detection", blurb: "Flags a dryer that dries much worse than its room-mates." },
-  { id: "timer", title: "“I started it” timer", blurb: "Residents tap “I started it” so others can see when a machine should be free." },
+  { id: "timer", title: "“I started it” timer", blurb: "Residents tap “I started it” so others can see when a machine should be free. The same taps build the room's busy hours." },
   { id: "abuse", title: "Reports & abuse limits", blurb: "Rate limits and spam speed bumps for anonymous reports." },
 ] as const;
 export type GroupId = (typeof GROUPS)[number]["id"];
@@ -39,6 +39,7 @@ export const FIELDS = [
   { key: "siteName", group: "site", kind: "text", max: 40, default: "Dorm Laundry", label: "Site name", help: "Shown in the header, the browser tab and when installed to the home screen." },
   { key: "tagline", group: "site", kind: "text", max: 120, default: "Which machines work, and the dryer setting that won't wreck your clothes.", label: "Tagline", help: "One line under the room list title." },
   { key: "announcement", group: "site", kind: "longtext", max: 240, default: "", label: "Announcement banner", help: "Shown at the top of every public page, e.g. “Room closed for vent cleaning until Friday”. Leave empty for none." },
+  { key: "timeZone", group: "site", kind: "text", max: 64, default: "America/Los_Angeles", label: "Time zone", help: "The room's time zone (IANA name, e.g. America/Los_Angeles), used for busy hours." },
   { key: "notesPublic", group: "site", kind: "bool", default: true, label: "Show report notes publicly", help: "When off, residents' free-text notes are visible to admins only (they are still collected)." },
   { key: "photosEnabled", group: "site", kind: "bool", default: true, label: "Let residents add a photo of their load", help: "An optional photo on a report. It is shrunk on the phone to about 150 KB, location data removed, and kept in the database." },
   { key: "photosPublic", group: "site", kind: "bool", default: false, label: "Show load photos publicly", help: "When off, photos are visible to admins only (Reports page). Hidden reports' photos are always admin-only." },
@@ -47,11 +48,17 @@ export const FIELDS = [
   { key: "brokenMinReporters", group: "status", kind: "int", min: 1, max: 5, step: 1, default: 1, label: "Reports needed to mark Broken", help: "1 = a single fresh “didn't work” report flips a machine to Broken (fast warnings, but easier to abuse). 2+ = it shows “Caution: reported broken, not yet confirmed” until that many different devices agree. Admins can always mark out of order directly.", unit: "devices" },
   { key: "statusHalfLifeHours", group: "status", kind: "int", min: 6, max: 720, step: 6, default: 72, label: "Status memory", help: "Every this many hours a report counts half as much. Shorter = status reacts faster but forgets sooner.", unit: "hours" },
   { key: "windowDays", group: "status", kind: "int", min: 14, max: 365, step: 1, default: 60, label: "Report window", help: "Reports older than this are ignored completely.", unit: "days" },
+  { key: "voteSameWeight", group: "status", kind: "float", min: 0, max: 2, step: 0.1, default: 0.5, label: "“Same here” weight", help: "Each resident who taps “Same here” on a report adds this much to its weight, and counts as another device toward “Reports needed to mark Broken”. 0 = votes don't count.", unit: "×" },
+  { key: "voteDifferentWeight", group: "status", kind: "float", min: 0, max: 2, step: 0.1, default: 0.5, label: "“Not for me” weight", help: "Each “Not for me” takes this much off a report's weight. At the default, two more “Not for me” than “Same here” and the report is ignored.", unit: "×" },
+  { key: "voteMaxBoost", group: "status", kind: "float", min: 1, max: 5, step: 0.5, default: 2.5, label: "Most a report can count", help: "However many “Same here” taps it gets, a report counts at most this many times.", unit: "×" },
   { key: "newestBoost", group: "status", kind: "float", min: 1, max: 3, step: 0.1, default: 1.5, label: "Newest-report boost", help: "Extra weight on the single most recent report, so a later “works now” beats an earlier “broken”. 1 = off.", unit: "×" },
 
   { key: "settingHalfLifeDays", group: "settings", kind: "int", min: 3, max: 120, step: 1, default: 21, label: "Setting memory", help: "Dryers change slowly (vents clog, thermostats drift), so this is longer than status memory.", unit: "days" },
 
   { key: "loadAdviceEnabled", group: "load", kind: "bool", default: true, label: "Show “What's in your load?”", help: "Residents pick fabrics and load size on a machine page and get a setting for that machine. It never adds steps to reporting." },
+  { key: "learnEnabled", group: "load", kind: "bool", default: true, label: "Learn from residents' loads", help: "Use past reports that say what was in the load (fabric and thickness) to adjust the dryer suggestion, e.g. “thick cotton came out damp on Medium here, so go one hotter”. Never goes above the fabric limits below." },
+  { key: "learnMinLoads", group: "load", kind: "int", min: 2, max: 30, step: 1, default: 3, label: "Loads needed to learn", help: "Reports with that fabric on that setting in this room before they change the suggestion.", unit: "loads" },
+  { key: "learnRate", group: "load", kind: "float", min: 0.3, max: 1, step: 0.05, default: 0.5, label: "Share that must agree", help: "Share of those loads that came out too hot (to go cooler) or damp (to go hotter).", unit: "0–1" },
   { key: "everydayMaxDryer", group: "load", kind: "choice", options: DRYER_SETTINGS, default: "high", label: "Everyday cotton: hottest dryer setting", help: "Cotton tolerates High but shrinks a little." },
   { key: "everydayWash", group: "load", kind: "choice", options: WASHER_SETTINGS, default: "warm", label: "Everyday cotton: hottest wash water", help: "" },
   { key: "towelsMaxDryer", group: "load", kind: "choice", options: DRYER_SETTINGS, default: "high", label: "Towels & bedding: hottest dryer setting", help: "Hot water and High heat are fine." },
@@ -80,6 +87,10 @@ export const FIELDS = [
   { key: "runWasherMinutes", group: "timer", kind: "int", min: 5, max: 120, step: 1, default: 35, label: "Washer cycle length", help: "Pre-filled when someone starts a washer. They can change it before tapping.", unit: "min" },
   { key: "runDryerMinutes", group: "timer", kind: "int", min: 5, max: 120, step: 1, default: 45, label: "Dryer cycle length", help: "Pre-filled for dryers in rooms that don't set their own minutes per payment.", unit: "min" },
   { key: "runGraceMinutes", group: "timer", kind: "int", min: 0, max: 120, step: 1, default: 15, label: "“Should be done” time", help: "After the estimate, the machine shows “should be done” for this long (clothes may still be inside), then shows as free.", unit: "min" },
+
+  { key: "busyEnabled", group: "timer", kind: "bool", default: true, label: "Show busy hours", help: "A “When is it busy?” chart on the room page, built from residents' “I started it” taps." },
+  { key: "busyWeeks", group: "timer", kind: "int", min: 1, max: 26, step: 1, default: 4, label: "Busy hours look-back", help: "Weeks of taps to average. Shorter follows changes (like finals week) faster.", unit: "weeks" },
+  { key: "busyMinRuns", group: "timer", kind: "int", min: 1, max: 500, step: 1, default: 20, label: "Taps needed to show busy hours", help: "The chart stays hidden until the room has this many “I started it” taps in the look-back, so a few taps don't paint a misleading picture.", unit: "taps" },
 
   { key: "rateMachineMinutes", group: "abuse", kind: "int", min: 0, max: 120, step: 1, default: 3, label: "Cooldown per device per machine", help: "A phone can report the same machine once per this many minutes. 0 = no cooldown.", unit: "min" },
   { key: "rateDevicePerDay", group: "abuse", kind: "int", min: 1, max: 500, step: 1, default: 30, label: "Reports per device per day", help: "", unit: "reports" },
@@ -151,6 +162,7 @@ export function parseSettingsForm(fd: { get(name: string): FormDataEntryValue | 
   // Cross-field sanity: a flag threshold below the room's threshold would flag everything.
   const c = values as Config;
   if (c.outlierSiblingRate >= c.outlierRate && !errors.outlierSiblingRate) errors.outlierSiblingRate = "Must be lower than “Damp share to flag”.";
+  if (!errors.timeZone && !validTimeZone(c.timeZone)) errors.timeZone = "Use a time zone name like America/Los_Angeles.";
   return { values: c, errors };
 }
 
@@ -164,6 +176,7 @@ export function toParams(c: Config): Params {
     brokenMinReporters: c.brokenMinReporters,
     outlier: { enabled: c.outlierEnabled, minReports: c.outlierMinReports, rate: c.outlierRate, siblingRate: c.outlierSiblingRate, gap: c.outlierGap },
     run: { washerMinutes: c.runWasherMinutes, dryerMinutes: c.runDryerMinutes, graceMs: c.runGraceMinutes * 60_000 },
+    votes: { same: c.voteSameWeight, different: c.voteDifferentWeight, max: c.voteMaxBoost },
   };
 }
 
@@ -173,6 +186,20 @@ export function toFabricRules(c: Config): FabricRules {
   return Object.fromEntries(
     FABRICS.map((f) => [f, { maxDryer: cfg[`${f}MaxDryer`] as DryerSetting, wash: cfg[`${f}Wash`] as WasherSetting }]),
   ) as FabricRules;
+}
+
+export function validTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Config → how much agreement the load learner needs, or undefined when learning is off. */
+export function toLearnParams(c: Config): { minLoads: number; rate: number } | undefined {
+  return c.learnEnabled ? { minLoads: c.learnMinLoads, rate: c.learnRate } : undefined;
 }
 
 /** Display label for a choice field's option. */

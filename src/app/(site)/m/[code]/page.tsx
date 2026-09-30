@@ -7,6 +7,7 @@ import { LaundryHelper } from "@/components/laundry-helper";
 import { LoadAdvice } from "@/components/load-advice";
 import { NotifyFixed } from "@/components/notify-fixed";
 import { ReportSheet } from "@/components/report-sheet";
+import { ReportVotes } from "@/components/report-votes";
 import { RunTimer } from "@/components/run-timer";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
 import { assistantConfigured } from "@/lib/assistant-server";
@@ -65,6 +66,7 @@ function ReportRow({ r, kind, now }: { r: PublicReport; kind: "washer" | "dryer"
             <img src={`/api/photos/${r.id}`} alt="Photo of the load" loading="lazy" className="h-20 w-20 rounded-[10px] border border-border object-cover" />
           </a>
         )}
+        <ReportVotes reportId={r.id} votes={r.votes} mine={r.mine} />
       </div>
     </li>
   );
@@ -229,7 +231,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
 
       {/* Tailor the setting to what's in the load (PLAN.md §6.7) */}
       {!data.retired && data.config.loadAdviceEnabled && (
-        <LoadAdvice kind={machine.kind} rec={rec ?? null} rules={toFabricRules(data.config)} offered={data.offered} />
+        <LoadAdvice kind={machine.kind} rec={rec ?? null} rules={toFabricRules(data.config)} offered={data.offered} learned={data.learned} />
       )}
 
       {/* AI helper: clothes → machine and setting (PLAN.md §6.8) */}

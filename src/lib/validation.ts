@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PHOTO_MAX_DATA_URL } from "./photo";
-import { DAMAGE_KINDS, DRYER_OUTCOMES, FABRICS, DRYER_SETTINGS, DRYER_SYMPTOMS, LOAD_SIZES, WASHER_OUTCOMES, WASHER_SETTINGS, WASHER_SYMPTOMS } from "./labels";
+import { DAMAGE_KINDS, DRYER_OUTCOMES, FABRICS, DRYER_SETTINGS, DRYER_SYMPTOMS, LOAD_SIZES, THICKNESSES, WASHER_OUTCOMES, WASHER_SETTINGS, WASHER_SYMPTOMS } from "./labels";
 
 export const reportSchema = z.object({
   code: z.string().min(4).max(16),
@@ -22,6 +22,7 @@ export const reportSchema = z.object({
     .transform((a) => (a.length ? [...new Set(a)] : null))
     .nullable()
     .optional(),
+  thickness: z.enum(THICKNESSES).nullable().optional(),
   /** On a "damaged" report: which kinds of clothing, and how they were damaged. */
   damagedItems: z.array(z.enum(FABRICS)).max(FABRICS.length).nullable().optional(),
   damageKinds: z.array(z.enum(DAMAGE_KINDS)).max(DAMAGE_KINDS.length).nullable().optional(),
@@ -66,3 +67,9 @@ export const runSchema = z.object({
   minutes: z.number().int().min(5).max(120),
 });
 export type RunPayload = z.input<typeof runSchema>;
+
+/** "Same here" / "Not for me" on a report. */
+export const voteSchema = z.object({
+  reportId: z.string().min(1).max(64),
+  vote: z.enum(["same", "different"]),
+});

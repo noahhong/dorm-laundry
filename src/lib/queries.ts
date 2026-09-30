@@ -1,13 +1,15 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { buildings, machineRuns, machines, reportPhotos, reports, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
+import { buildings, machineRuns, machines, reportPhotos, reports, reportVotes, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
+import { busyWeek, type BusyWeek } from "./busy";
 import { deviceHash } from "./device";
 import { getConfig } from "./config-server";
-import { toParams, type Config } from "./config";
+import { toLearnParams, toParams, type Config } from "./config";
+import { learnFabricOutcomes, type Learned } from "./load-advice";
 import type { DryerSetting } from "./labels";
 import { offeredSettings } from "./rooms";
-import { applyRoomFallback, computeStatus, currentRun, defaultRunMinutes, detectWeakDryers, recommendSetting, type InUse, type MachineStatus, type Params, type Recommendation, type WeakDryer } from "./status";
+import { applyRoomFallback, computeStatus, currentRun, defaultRunMinutes, detectWeakDryers, recommendSetting, votedTrust, type InUse, type MachineStatus, type Params, type Recommendation, type WeakDryer } from "./status";
 
 export interface MachineView {
   id: string;
@@ -59,19 +61,75 @@ async function runsFor(machineIds: string[], now: number) {
   return byMachine;
 }
 
-async function reportsFor(machineIds: string[], now: number, windowMs: number) {
-  if (machineIds.length === 0) return new Map<string, Report[]>();
+export type VoteTally = { same: number; different: number; mine: "same" | "different" | null };
+
+/** Votes on the given machines' recent reports, per report, plus how `viewer` voted. */
+async function votesFor(machineIds: string[], since: number, viewer: string | null) {
+  const byReport = new Map<string, VoteTally>();
+  if (machineIds.length === 0) return byReport;
   const rows = await getDb()
-    .select()
-    .from(reports)
-    .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, now - windowMs), isNull(reports.hiddenAt), isNull(reports.undoneAt)));
+    .select({ reportId: reportVotes.reportId, vote: reportVotes.vote, deviceHash: reportVotes.deviceHash })
+    .from(reportVotes)
+    .innerJoin(reports, eq(reportVotes.reportId, reports.id))
+    .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, since)));
+  for (const v of rows) {
+    const t = byReport.get(v.reportId) ?? { same: 0, different: 0, mine: null };
+    t[v.vote] += 1;
+    if (viewer && v.deviceHash === viewer) t.mine = v.vote;
+    byReport.set(v.reportId, t);
+  }
+  return byReport;
+}
+
+/**
+ * Recent visible reports per machine, with residents' votes folded in: `trust` is the voted weight and
+ * `confirmedBy` the "Same here" count (PLAN.md §6.9).
+ */
+async function reportsFor(machineIds: string[], now: number, params: Params, viewer: string | null = null) {
   const byMachine = new Map<string, Report[]>();
-  for (const r of rows) {
+  const votes = new Map<string, VoteTally>();
+  if (machineIds.length === 0) return Object.assign(byMachine, { votes });
+  const since = now - params.windowMs;
+  const [rows, tallies] = await Promise.all([
+    getDb()
+      .select()
+      .from(reports)
+      .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, since), isNull(reports.hiddenAt), isNull(reports.undoneAt))),
+    votesFor(machineIds, since, viewer),
+  ]);
+  for (const raw of rows) {
+    const t = tallies.get(raw.id);
+    const r = t ? { ...raw, trust: votedTrust(raw.trust, t.same, t.different, params.votes), confirmedBy: params.votes.same > 0 ? t.same : 0 } : raw;
     const list = byMachine.get(r.machineId) ?? [];
     list.push(r);
     byMachine.set(r.machineId, list);
   }
-  return byMachine;
+  return Object.assign(byMachine, { votes: tallies });
+}
+
+/** What this room's past dryer loads say about each fabric and thickness, or undefined when learning is off. */
+export async function learnedForRoom(roomId: string, now: number, config: Config): Promise<Learned | undefined> {
+  const learn = toLearnParams(config);
+  if (!learn) return undefined;
+  const dryers = await getDb()
+    .select({ id: machines.id })
+    .from(machines)
+    .where(and(eq(machines.roomId, roomId), eq(machines.kind, "dryer")));
+  const rs = await reportsFor(dryers.map((d) => d.id), now, toParams(config));
+  const stats = learnFabricOutcomes([...rs.values()].flat());
+  return { stats, ...learn };
+}
+
+/** The room's usual busy hours, or null when it's turned off or there aren't enough taps yet. */
+export async function busyForRoom(roomId: string, machineCount: number, now: number, config: Config): Promise<BusyWeek | null> {
+  if (!config.busyEnabled || machineCount === 0) return null;
+  const rows = await getDb()
+    .select({ startedAt: machineRuns.startedAt, endsAt: machineRuns.endsAt, endedAt: machineRuns.endedAt })
+    .from(machineRuns)
+    .innerJoin(machines, eq(machineRuns.machineId, machines.id))
+    .where(and(eq(machines.roomId, roomId), gte(machineRuns.startedAt, now - config.busyWeeks * 7 * 24 * 3_600_000)));
+  const week = busyWeek(rows, machineCount, now, config.timeZone, config.busyWeeks);
+  return week.runs >= config.busyMinRuns ? week : null;
 }
 
 export async function listBuildingsWithRooms() {
@@ -94,7 +152,8 @@ export async function machinesForRoom(room: Room, now: number, { includeRetired 
     .where(includeRetired ? eq(machines.roomId, roomId) : and(eq(machines.roomId, roomId), isNull(machines.retiredAt)))
     .orderBy(asc(machines.position), asc(machines.label));
   const ids = ms.map((m) => m.id);
-  const [rs, runs, viewer] = await Promise.all([reportsFor(ids, now, params.windowMs), runsFor(ids, now), deviceHash({ create: false })]);
+  const viewer = await deviceHash({ create: false });
+  const [rs, runs] = await Promise.all([reportsFor(ids, now, params), runsFor(ids, now)]);
   const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], runs.get(m.id) ?? [], now, params, offered, viewer), retiredAt: m.retiredAt, position: m.position }));
   const resetAt = new Map(ms.map((m) => [m.id, m.statusResetAt ?? 0]));
   // Broken dryers are already flagged, and their wet loads would skew the room's baseline, so they sit this out.
@@ -141,12 +200,18 @@ export async function getRoomById(roomId: string, now = Date.now(), opts: { incl
     .where(eq(rooms.id, roomId))
     .limit(1);
   if (!row) return null;
-  return { ...row, machines: await machinesForRoom(row.room, now, opts), offered: offeredSettings(row.room.dryerSettings), now };
+  const config = await getConfig();
+  const [ms, learned] = await Promise.all([machinesForRoom(row.room, now, opts, config), learnedForRoom(row.room.id, now, config)]);
+  return { ...row, machines: ms, offered: offeredSettings(row.room.dryerSettings), learned, now };
 }
 
-export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "fabrics" | "damagedItems" | "damageKinds" | "note"> & {
+export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "fabrics" | "thickness" | "damagedItems" | "damageKinds" | "note"> & {
   /** True when the report has a load photo and photos are public (served at /api/photos/[id]). */
   hasPhoto: boolean;
+  /** "Same here" / "Not for me" counts, and how this browser voted. */
+  votes: VoteTally;
+  /** Sent from this browser, so it can't be voted on here. */
+  mine: boolean;
 };
 
 export async function getMachine(code: string, now = Date.now()) {
@@ -162,7 +227,12 @@ export async function getMachine(code: string, now = Date.now()) {
   const config = await getConfig();
   const params = toParams(config);
   const offered = offeredSettings(row.room.dryerSettings);
-  const [byMachine, runs, viewer] = await Promise.all([reportsFor([row.machine.id], now, params.windowMs), runsFor([row.machine.id], now), deviceHash({ create: false })]);
+  const viewer = await deviceHash({ create: false });
+  const [byMachine, runs, learned] = await Promise.all([
+    reportsFor([row.machine.id], now, params, viewer),
+    runsFor([row.machine.id], now),
+    row.machine.kind === "dryer" ? learnedForRoom(row.room.id, now, config) : undefined,
+  ]);
   const rs = byMachine.get(row.machine.id) ?? [];
   let view = toView(row.machine, rs, runs.get(row.machine.id) ?? [], now, params, offered, viewer);
   if (view.kind === "dryer") {
@@ -177,7 +247,7 @@ export async function getMachine(code: string, now = Date.now()) {
     for (const { id } of ids) withPhoto.add(id);
   }
   const recent: PublicReport[] = latest
-    .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, fabrics, damagedItems, damageKinds, note }) => ({
+    .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, fabrics, thickness, damagedItems, damageKinds, note, deviceHash: by }) => ({
       id,
       createdAt,
       outcome,
@@ -187,14 +257,17 @@ export async function getMachine(code: string, now = Date.now()) {
       minutes,
       loadSize,
       fabrics,
+      thickness,
       damagedItems,
       damageKinds,
       hasPhoto: withPhoto.has(id),
+      votes: byMachine.votes.get(id) ?? { same: 0, different: 0, mine: null },
+      mine: viewer != null && by === viewer,
       // Admins can keep residents' free text private (Settings → "Show report notes publicly").
       note: config.notesPublic ? note : null,
     }));
   const runMinutes = defaultRunMinutes(row.machine.kind, row.room.minutesPerCycle, params);
-  return { ...row, view, recent, retired: row.machine.retiredAt != null, offered, config, runMinutes, now };
+  return { ...row, view, recent, retired: row.machine.retiredAt != null, offered, config, runMinutes, learned, now };
 }
 
 export async function recentReportsForRoom(roomId: string, limit = 40) {
@@ -217,7 +290,7 @@ export async function machineStatusById(machineId: string, now = Date.now()) {
     .limit(1);
   if (!row) return null;
   const params = toParams(await getConfig());
-  const rs = (await reportsFor([machineId], now, params.windowMs)).get(machineId) ?? [];
+  const rs = (await reportsFor([machineId], now, params)).get(machineId) ?? [];
   const m = row.machine;
   const status = computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, rs, now, params);
   return { machine: m, roomName: row.roomName, status };

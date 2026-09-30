@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { BusyHours } from "@/components/busy-hours";
 import { BackLink, Page } from "@/components/chrome";
 import { StatusIcon, QrIcon } from "@/components/icons";
 import { KindFilter } from "@/components/kind-filter";
@@ -9,7 +10,7 @@ import { TONE } from "@/components/status";
 import { assistantConfigured } from "@/lib/assistant-server";
 import { getConfig } from "@/lib/config-server";
 import { homeLinkLabel, resolveHome } from "@/lib/home";
-import { getRoom, listBuildingsWithRooms, type MachineView } from "@/lib/queries";
+import { busyForRoom, getRoom, listBuildingsWithRooms, type MachineView } from "@/lib/queries";
 import type { StatusLevel } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,7 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
   // With one building and one room, "/" is this page, so the back link would go nowhere.
   const backLabel = homeLinkLabel(resolveHome(buildings), { building, room });
   const now = data.now;
+  const busy = await busyForRoom(data.room.id, data.machines.length, now, await getConfig());
   const dryers = data.machines.filter((m) => m.kind === "dryer");
   const washers = data.machines.filter((m) => m.kind === "washer");
   const empty = data.totalReports === 0;
@@ -80,6 +82,9 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
           </div>
         </div>
       )}
+
+      {/* Usual busy hours from "I started it" taps (PLAN.md §6.10) */}
+      {busy && <BusyHours share={busy.share} today={busy.today} hour={busy.hour} runs={busy.runs} />}
 
       {/* AI helper: clothes → machine and setting (PLAN.md §6.8) */}
       {helper && <LaundryHelper roomId={data.room.id} />}

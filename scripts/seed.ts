@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { createDb } from "../src/lib/db";
 import { buildings, machineRuns, machines, reports, rooms } from "../src/lib/db/schema";
 import { randomId } from "../src/lib/ids";
+import { tzOffsetMinutes } from "../src/lib/busy";
 
 const H = 3_600_000;
 const D = 24 * H;
@@ -68,8 +69,10 @@ async function main() {
   await db.insert(rooms).values({ id: roomId, buildingId, slug: "laundry", name: "Laundry room", locationHint: "Ground floor, past the mailroom", createdAt: now });
   let position = 0;
   let n = 0;
+  const machineIds: string[] = [];
   for (const m of MACHINES) {
     const machineId = randomId();
+    machineIds.push(machineId);
     await db.insert(machines).values({ id: machineId, roomId, code: m.code, kind: m.kind, label: m.label, washMachineNumber: m.wash ?? null, position: position++, createdAt: now - 30 * D });
     for (const r of m.reports) {
       const fake = createHash("sha256").update(`seed-${n++}`).digest("hex");
@@ -84,7 +87,33 @@ async function main() {
       await db.insert(machineRuns).values({ id: randomId(), machineId, startedAt, endsAt: startedAt + m.running.minutes * 60_000, deviceHash: fake, ipHash: fake });
     }
   }
-  console.log(`✓ seeded Hedrick Summit → /b/hedrick-summit/laundry (${MACHINES.length} machines, ${n} reports)`);
+  const history = await seedRunHistory(db, machineIds, now);
+  console.log(`✓ seeded Hedrick Summit → /b/hedrick-summit/laundry (${MACHINES.length} machines, ${n} reports, ${history} past timers)`);
+}
+
+/** Four weeks of finished "I started it" timers, busiest on weekday evenings, so busy hours has something to show. */
+async function seedRunHistory(db: ReturnType<typeof createDb>, machineIds: string[], now: number) {
+  // Chance a machine is started in a given local hour (index = hour).
+  const byHour = [0, 0, 0, 0, 0, 0, 0, 0.05, 0.1, 0.15, 0.2, 0.2, 0.15, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.55, 0.6, 0.55, 0.4, 0.2];
+  const rand = (key: string) => createHash("sha256").update(key).digest().readUInt32BE(0) / 2 ** 32;
+  const offset = tzOffsetMinutes(now, "America/Los_Angeles") * 60_000;
+  const today = Math.floor((now + offset) / D) * D - offset;
+  const rows: (typeof machineRuns.$inferInsert)[] = [];
+  for (let day = 1; day <= 28; day++) {
+    const start = today - day * D;
+    const weekend = [0, 6].includes(new Date(start + offset + 12 * H).getUTCDay());
+    for (const [i, machineId] of machineIds.entries()) {
+      for (let h = 7; h < 24; h++) {
+        const p = byHour[h] * (weekend ? 0.45 : 0.65);
+        if (rand(`run-${day}-${i}-${h}`) >= p) continue;
+        const startedAt = start + h * H + Math.floor(rand(`min-${day}-${i}-${h}`) * 20) * 60_000;
+        const fake = createHash("sha256").update(`seed-hist-${day}-${i}-${h}`).digest("hex");
+        rows.push({ id: randomId(), machineId, startedAt, endsAt: startedAt + 45 * 60_000, deviceHash: fake, ipHash: fake });
+      }
+    }
+  }
+  for (let i = 0; i < rows.length; i += 200) await db.insert(machineRuns).values(rows.slice(i, i + 200));
+  return rows.length;
 }
 
 main().catch((e) => {

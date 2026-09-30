@@ -94,10 +94,14 @@ describe("planLoad", () => {
 
 describe("parseLoadToolInput", () => {
   it("keeps known fabrics once and maps an unknown size to none", () => {
-    expect(parseLoadToolInput({ fabrics: ["wool", "wool", "leather"], size: "unknown" })).toEqual({ fabrics: ["wool"], size: null });
+    expect(parseLoadToolInput({ fabrics: ["wool", "wool", "leather"], size: "unknown" })).toEqual({ fabrics: ["wool"], size: null, thickness: null });
   });
   it("accepts an overstuffed load", () => {
-    expect(parseLoadToolInput({ fabrics: ["towels"], size: "overstuffed" })).toEqual({ fabrics: ["towels"], size: "overstuffed" });
+    expect(parseLoadToolInput({ fabrics: ["towels"], size: "overstuffed" })).toEqual({ fabrics: ["towels"], size: "overstuffed", thickness: null });
+  });
+  it("keeps the thickness (a thick cotton hoodie)", () => {
+    expect(parseLoadToolInput({ fabrics: ["everyday"], size: "unknown", thickness: "thick" })).toEqual({ fabrics: ["everyday"], size: null, thickness: "thick" });
+    expect(parseLoadToolInput({ fabrics: ["everyday"], size: "unknown", thickness: "fluffy" })?.thickness).toBeNull();
   });
   it("rejects input without a fabric list", () => {
     expect(parseLoadToolInput({ size: "small" })).toBeNull();

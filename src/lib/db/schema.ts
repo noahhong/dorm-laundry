@@ -65,6 +65,8 @@ export const reports = sqliteTable(
     loadSize: text("load_size"),
     /** What was in the load (FABRICS in labels.ts), when the reporter said. Recorded for learning per-fabric settings later. */
     fabrics: text("fabrics", { mode: "json" }).$type<string[] | null>(),
+    /** How thick most of the load was (THICKNESSES in labels.ts). Learned together with fabrics (PLAN.md §6.7). */
+    thickness: text("thickness"),
     /** On a "damaged" report: which kinds of clothing (FABRICS) and how (DAMAGE_KINDS). */
     damagedItems: text("damaged_items", { mode: "json" }).$type<string[] | null>(),
     damageKinds: text("damage_kinds", { mode: "json" }).$type<string[] | null>(),
@@ -103,6 +105,25 @@ export const machineRuns = sqliteTable(
     index("machine_runs_machine_time").on(t.machineId, t.startedAt),
     index("machine_runs_device_time").on(t.deviceHash, t.startedAt),
     index("machine_runs_ip_time").on(t.ipHash, t.startedAt),
+  ],
+);
+
+/** "Same here" / "Not for me" on someone else's report. One vote per device per report; changes a report's weight (PLAN.md §6.9). */
+export const reportVotes = sqliteTable(
+  "report_votes",
+  {
+    reportId: text("report_id")
+      .notNull()
+      .references(() => reports.id, { onDelete: "cascade" }),
+    deviceHash: text("device_hash").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    vote: text("vote", { enum: ["same", "different"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("report_votes_report_device").on(t.reportId, t.deviceHash),
+    index("report_votes_device_time").on(t.deviceHash, t.createdAt),
+    index("report_votes_ip_time").on(t.ipHash, t.createdAt),
   ],
 );
 
@@ -174,4 +195,5 @@ export type Room = typeof rooms.$inferSelect;
 export type Machine = typeof machines.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type MachineRun = typeof machineRuns.$inferSelect;
+export type ReportVote = typeof reportVotes.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

@@ -5,8 +5,8 @@
 // resident. Which machine and which setting always come from the site's own rules (load-advice.ts) and the
 // room's live status, so the assistant can't invent a setting the dryers don't have.
 
-import { FABRICS, FABRIC_LABEL, SETTING_LABEL, type DryerSetting, type Fabric, type MachineKind } from "./labels";
-import { suggestForLoad, type FabricRules, type LoadInput } from "./load-advice";
+import { FABRICS, FABRIC_LABEL, SETTING_LABEL, THICKNESSES, type DryerSetting, type Fabric, type MachineKind, type Thickness } from "./labels";
+import { suggestForLoad, type FabricRules, type Learned, type LoadInput } from "./load-advice";
 import type { Confidence, MachineStatus, Recommendation, StatusLevel } from "./status";
 
 export const ASSISTANT_LIMITS = {
@@ -34,6 +34,8 @@ export interface AssistantRoom {
   machines: AssistantMachine[];
   /** Set on a machine page: the machine the resident is standing at. */
   focusCode: string | null;
+  /** What this room's past loads say per fabric and thickness (PLAN.md §6.7). */
+  learned?: Learned;
 }
 
 export interface MachinePick {
@@ -62,14 +64,17 @@ export const LOAD_TOOL = {
     "blankets), jeans (denim, jeans, jackets made of denim), athletic (leggings, gym shorts, sports bras, jerseys, " +
     "spandex, nylon, polyester workout wear, swimwear), delicates (lace, silk, satin, bras, lingerie, rayon blouses), " +
     "wool (sweaters, cardigans, merino, cashmere, knit beanies), prints (graphic tees, screen-printed or heat-transfer " +
-    "shirts). Include every category present; mixed loads are fine.",
+    "shirts). Include every category present; mixed loads are fine. Set thickness to how thick most of the load is: thick " +
+    "for hoodies, sweatshirts, towels, heavy denim, fleece or blankets; thin for t-shirts, leggings, silk or light " +
+    "synthetics; regular otherwise; unknown if you can't tell.",
   input_schema: {
     type: "object" as const,
     properties: {
       fabrics: { type: "array", items: { type: "string", enum: [...FABRICS] }, description: "Fabric categories in the load." },
       size: { type: "string", enum: ["small", "medium", "full", "overstuffed", "unknown"], description: "How full the drum will be, if the resident said." },
+      thickness: { type: "string", enum: [...THICKNESSES, "unknown"], description: "How thick most of the load is." },
     },
-    required: ["fabrics", "size"],
+    required: ["fabrics", "size", "thickness"],
     additionalProperties: false,
   },
   strict: true,
@@ -78,11 +83,12 @@ export const LOAD_TOOL = {
 /** Validate the tool input Claude sent. Unknown fabrics are dropped rather than failing the turn. */
 export function parseLoadToolInput(raw: unknown): LoadInput | null {
   if (!raw || typeof raw !== "object") return null;
-  const v = raw as { fabrics?: unknown; size?: unknown };
+  const v = raw as { fabrics?: unknown; size?: unknown; thickness?: unknown };
   if (!Array.isArray(v.fabrics)) return null;
   const fabrics = [...new Set(v.fabrics.filter((f): f is Fabric => FABRICS.includes(f as Fabric)))];
   const size = v.size === "small" || v.size === "medium" || v.size === "full" || v.size === "overstuffed" ? v.size : null;
-  return { fabrics, size };
+  const thickness = THICKNESSES.includes(v.thickness as Thickness) ? (v.thickness as Thickness) : null;
+  return { fabrics, size, thickness };
 }
 
 const LEVEL_RANK: Record<StatusLevel, number> = { works: 0, unknown: 1, caution: 2, broken: 3 };
@@ -119,7 +125,7 @@ export function planLoad(room: AssistantRoom, load: LoadInput, rules: FabricRule
   if (load.fabrics.length === 0) {
     return { load, picks, text: "No fabric categories given. Ask the resident what is in the load." };
   }
-  lines.push(`Load: ${load.fabrics.map((f) => FABRIC_LABEL[f]).join(", ")}${load.size ? `; ${load.size} load` : ""}.`);
+  lines.push(`Load: ${load.fabrics.map((f) => FABRIC_LABEL[f]).join(", ")}${load.thickness ? `; mostly ${load.thickness}` : ""}${load.size ? `; ${load.size} load` : ""}.`);
 
   for (const kind of ["washer", "dryer"] as const) {
     const all = room.machines.filter((m) => m.kind === kind);
@@ -131,7 +137,7 @@ export function planLoad(room: AssistantRoom, load: LoadInput, rules: FabricRule
       continue;
     }
     const best = ranked[0];
-    const advice = suggestForLoad(kind, load, rules, best.recommendation, room.offered);
+    const advice = suggestForLoad(kind, load, rules, best.recommendation, room.offered, room.learned);
     if (!advice) continue;
     const setting = `${SETTING_LABEL[advice.setting] ?? advice.setting}${kind === "washer" ? " water" : ""}`;
     picks.push({ code: best.code, label: best.label, kind, setting, why: advice.why, tips: advice.tips });
@@ -144,7 +150,7 @@ export function planLoad(room: AssistantRoom, load: LoadInput, rules: FabricRule
     if (broken.length) lines.push(`Broken ${kind}s, do not use: ${broken.join(", ")}.`);
     const focus = all.find((m) => m.code === room.focusCode);
     if (focus && focus.code !== best.code) {
-      const here = focus.status.level === "broken" ? null : suggestForLoad(kind, load, rules, focus.recommendation, room.offered);
+      const here = focus.status.level === "broken" ? null : suggestForLoad(kind, load, rules, focus.recommendation, room.offered, room.learned);
       lines.push(
         here
           ? `The resident is at ${focus.label} (${statusText(focus)}); if they use it anyway, use ${SETTING_LABEL[here.setting]}. ${here.why}`

@@ -13,6 +13,8 @@ export interface ReportInput {
   symptoms: string[];
   deviceHash: string;
   trust: number;
+  /** Other devices that tapped "Same here" on this report. They count toward confirming a Broken report. */
+  confirmedBy?: number;
 }
 
 export interface MachineInput {
@@ -79,6 +81,8 @@ export interface Params {
   outlier: { enabled: boolean; minReports: number; rate: number; siblingRate: number; gap: number };
   /** "I started it" timer: default cycle lengths, and how long past the estimate a machine still shows as finishing. */
   run: { washerMinutes: number; dryerMinutes: number; graceMs: number };
+  /** "Same here" / "Not for me" on reports: how much each vote moves a report's weight, and the most it can grow to. */
+  votes: { same: number; different: number; max: number };
 }
 
 export const DEFAULT_PARAMS: Params = {
@@ -89,7 +93,17 @@ export const DEFAULT_PARAMS: Params = {
   brokenMinReporters: 1,
   outlier: { enabled: true, minReports: 3, rate: 0.45, siblingRate: 0.25, gap: 0.3 },
   run: { washerMinutes: 35, dryerMinutes: 45, graceMs: 15 * 60_000 },
+  votes: { same: 0.5, different: 0.5, max: 2.5 },
 };
+
+/**
+ * A report's weight after other residents vote on it (PLAN.md §6.9). Each "Same here" adds `same`, each "Not for me"
+ * takes away `different`, and the result stays between 0 (ignored) and `max` times the report's own trust.
+ */
+export function votedTrust(trust: number, same: number, different: number, votes: Params["votes"] = DEFAULT_PARAMS.votes): number {
+  const factor = Math.min(votes.max, Math.max(0, 1 + same * votes.same - different * votes.different));
+  return trust * factor;
+}
 
 const decay = (age: number, halfLife: number) => Math.pow(0.5, Math.max(0, age) / halfLife);
 
@@ -204,7 +218,7 @@ export function computeStatus(machine: MachineInput, allReports: ReportInput[], 
   counted.forEach((r, i) => {
     const w = r.trust * decay(now - r.createdAt, params.statusHalfLifeMs) * (i === 0 ? params.newestBoost : 1);
     const e = statusEvidence(machine.kind, r);
-    if (e.broken > 0) brokenDevices++;
+    if (e.broken > 0 && r.trust > 0) brokenDevices += 1 + (r.confirmedBy ?? 0);
     B += w * e.broken;
     C += w * e.caution;
     O += w * e.ok;

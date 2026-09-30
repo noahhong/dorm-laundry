@@ -79,6 +79,23 @@ export const FABRIC_LABEL: Record<string, string> = {
   prints: "Graphic tees",
 };
 
+/** How thick most of the load is ("thick cotton hoodie"). Thick items hold water; thin ones dry fast. */
+export const THICKNESSES = ["thin", "regular", "thick"] as const;
+export type Thickness = (typeof THICKNESSES)[number];
+
+export const THICKNESS_LABEL: Record<string, string> = {
+  thin: "Thin",
+  regular: "Regular",
+  thick: "Thick",
+};
+
+/** Examples shown under the thickness picker. */
+export const THICKNESS_HINT: Record<string, string> = {
+  thin: "tees, leggings, silk",
+  regular: "most clothes",
+  thick: "hoodies, towels, denim",
+};
+
 /** How clothes were damaged, picked on a "Damaged clothes" report (PLAN.md §5). */
 export const DAMAGE_KINDS = ["melted", "shrunk", "lost_stretch", "print_cracked", "scorched", "felted", "color_bled", "torn"] as const;
 export type DamageKind = (typeof DAMAGE_KINDS)[number];
@@ -157,9 +174,13 @@ export const LOAD_SIZE_LABEL: Record<string, string> = {
   overstuffed: "Packed",
 };
 
-/** "Full load · Athletic / stretch", or null. Shared by the public report list and the admin. */
-export function loadSummary(r: { loadSize: string | null; fabrics: string[] | null }): string | null {
-  const bits = [r.loadSize ? `${LOAD_SIZE_LABEL[r.loadSize] ?? r.loadSize} load` : null, ...(r.fabrics ?? []).map((f) => FABRIC_LABEL[f] ?? f)];
+/** "Full load · Thick · Athletic / stretch", or null. Shared by the public report list and the admin. */
+export function loadSummary(r: { loadSize: string | null; fabrics: string[] | null; thickness?: string | null }): string | null {
+  const bits = [
+    r.loadSize ? `${LOAD_SIZE_LABEL[r.loadSize] ?? r.loadSize} load` : null,
+    r.thickness ? (THICKNESS_LABEL[r.thickness] ?? r.thickness) : null,
+    ...(r.fabrics ?? []).map((f) => FABRIC_LABEL[f] ?? f),
+  ];
   return bits.filter(Boolean).join(" · ") || null;
 }
 

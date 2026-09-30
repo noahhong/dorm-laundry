@@ -14,6 +14,8 @@ import {
   OUTCOME_LABEL,
   SETTING_LABEL,
   SYMPTOM_LABEL,
+  THICKNESSES,
+  THICKNESS_LABEL,
   WASHER_OUTCOMES,
   WASHER_SETTINGS,
   symptomsFor,
@@ -186,6 +188,8 @@ function Sheet({
   const storedLoad = parseLoad(useSyncExternalStore(subscribeLoad, readLoadRaw, () => null));
   const loadSize = loadSizePick === undefined ? storedLoad.size : loadSizePick;
   const fabrics: string[] = fabricsPick ?? [...storedLoad.fabrics];
+  const [thicknessPick, setThickness] = useState<string | null | undefined>(undefined);
+  const thickness = thicknessPick === undefined ? (storedLoad.thickness ?? null) : thicknessPick;
   const [errorCode, setErrorCode] = useState("");
   const [damagedItems, setDamagedItems] = useState<string[]>([]);
   const [damageKinds, setDamageKinds] = useState<string[]>([]);
@@ -265,6 +269,7 @@ function Sheet({
         minutes: minutes ? Number(minutes) : null,
         loadSize: loadSize as never,
         fabrics: fabrics.length ? (fabrics as never) : null,
+        thickness: thickness as never,
         damagedItems: outcome === "damaged" && damagedItems.length ? (damagedItems as never) : null,
         damageKinds: outcome === "damaged" && damageKinds.length ? (damageKinds as never) : null,
         photo: outcome !== "not_working" ? photo : null,
@@ -437,9 +442,9 @@ function Sheet({
                     {lastSetting && isDryer && !setting && (
                       <p className="mt-1.5 text-caption text-text-3">Dot = what you used last time</p>
                     )}
-                    {!more && (fabrics.length > 0 || loadSize) && (
+                    {!more && (fabrics.length > 0 || loadSize || thickness) && (
                       <p className="mt-1.5 text-caption text-text-3">
-                        Your load ({[loadSize ? `${LOAD_SIZE_LABEL[loadSize]} load` : null, ...fabrics.map((f) => FABRIC_LABEL[f])].filter(Boolean).join(" · ")}) is
+                        Your load ({[loadSize ? `${LOAD_SIZE_LABEL[loadSize]} load` : null, thickness ? THICKNESS_LABEL[thickness] : null, ...fabrics.map((f) => FABRIC_LABEL[f])].filter(Boolean).join(" · ")}) is
                         included. Change it in More details.
                       </p>
                     )}
@@ -534,6 +539,22 @@ function Sheet({
                             className={`h-10 rounded-[9px] text-caption font-semibold ${loadSize === l ? "bg-surface text-text shadow-e1" : "text-text-2"}`}
                           >
                             {LOAD_SIZE_LABEL[l]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-label text-text-2">How thick was most of it</span>
+                      <div role="group" aria-label="How thick was most of it" className="mt-1 grid grid-cols-3 gap-1 rounded-[12px] bg-surface-2 p-1">
+                        {THICKNESSES.map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            aria-pressed={thickness === t}
+                            onClick={() => setThickness(thickness === t ? null : t)}
+                            className={`h-10 rounded-[9px] text-caption font-semibold ${thickness === t ? "bg-surface text-text shadow-e1" : "text-text-2"}`}
+                          >
+                            {THICKNESS_LABEL[t]}
                           </button>
                         ))}
                       </div>
