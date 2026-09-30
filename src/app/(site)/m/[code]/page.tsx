@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { BackLink, Page } from "@/components/chrome";
 import { HeatLadder, LadderLegend } from "@/components/heat-ladder";
 import { AlertIcon, DryerIcon, ExternalIcon, StatusIcon, ThermometerIcon, WasherIcon } from "@/components/icons";
+import { LoadAdvice } from "@/components/load-advice";
 import { ReportSheet } from "@/components/report-sheet";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
+import { toFabricRules } from "@/lib/config";
 import { isoTime, plural, timeAgo } from "@/lib/format";
-import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
+import { FABRIC_LABEL, LOAD_SIZE_LABEL, OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
 import { getMachine, type PublicReport } from "@/lib/queries";
 import { turnstileSiteKey } from "@/lib/turnstile";
 import type { StatusLevel } from "@/lib/status";
@@ -34,6 +36,7 @@ function ReportRow({ r, kind, now }: { r: PublicReport; kind: "washer" | "dryer"
     OUTCOME_LABEL[r.outcome] ?? r.outcome,
     r.minutes ? `${r.minutes} min` : null,
   ].filter(Boolean);
+  const load = [r.loadSize ? `${LOAD_SIZE_LABEL[r.loadSize] ?? r.loadSize} load` : null, ...(r.fabrics ?? []).map((f) => FABRIC_LABEL[f] ?? f)].filter(Boolean);
   return (
     <li className="flex gap-3 py-3">
       <StatusIcon level={level} size={18} className={`mt-0.5 shrink-0 ${TONE[level].icon}`} />
@@ -45,6 +48,7 @@ function ReportRow({ r, kind, now }: { r: PublicReport; kind: "washer" | "dryer"
           </time>
         </div>
         {r.symptoms.length > 0 && <p className="text-label text-text-2">{r.symptoms.map((s) => SYMPTOM_LABEL[s] ?? s).join(", ")}</p>}
+        {load.length > 0 && <p className="text-label text-text-2">{load.join(" · ")}</p>}
         {r.errorCode && <p className="text-label text-text-2">Error code {r.errorCode}</p>}
         {r.note && <p className="mt-0.5 break-words text-label text-text-2">&ldquo;{r.note}&rdquo;</p>}
       </div>
@@ -200,6 +204,11 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
             </div>
           </div>
         </section>
+      )}
+
+      {/* Tailor the setting to what's in the load (PLAN.md §6.7) */}
+      {!data.retired && data.config.loadAdviceEnabled && (
+        <LoadAdvice kind={machine.kind} rec={rec ?? null} rules={toFabricRules(data.config)} offered={data.offered} />
       )}
 
       {/* Recent reports */}

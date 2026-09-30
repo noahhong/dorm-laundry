@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   void _page;
   const rows = await exportReports(filters);
   const lines = [
-    csvRow(["time_utc", "building", "room", "machine", "machine_code", "kind", "outcome", "setting", "symptoms", "error_code", "minutes", "load_size", "note", "hidden", "undone", "device"]),
+    csvRow(["time_utc", "building", "room", "machine", "machine_code", "kind", "outcome", "setting", "symptoms", "error_code", "minutes", "load_size", "fabrics", "note", "hidden", "undone", "device"]),
     ...rows.map(({ report: r, machineLabel, machineCode, kind, roomName, buildingName }) =>
       csvRow([
         new Date(r.createdAt).toISOString(),
@@ -27,6 +27,7 @@ export async function GET(req: Request) {
         r.errorCode,
         r.minutes,
         r.loadSize,
+        r.fabrics?.join(" "),
         r.note,
         r.hiddenAt ? "yes" : "",
         r.undoneAt ? "yes" : "",

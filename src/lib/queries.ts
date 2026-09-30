@@ -126,7 +126,7 @@ export async function getRoomById(roomId: string, now = Date.now(), opts: { incl
   return { ...row, machines: await machinesForRoom(row.room, now, opts), offered: offeredSettings(row.room.dryerSettings), now };
 }
 
-export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "note">;
+export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "fabrics" | "note">;
 
 export async function getMachine(code: string, now = Date.now()) {
   const db = getDb();
@@ -151,7 +151,7 @@ export async function getMachine(code: string, now = Date.now()) {
   const recent: PublicReport[] = [...rs]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 20)
-    .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, note }) => ({
+    .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, fabrics, note }) => ({
       id,
       createdAt,
       outcome,
@@ -160,6 +160,7 @@ export async function getMachine(code: string, now = Date.now()) {
       errorCode,
       minutes,
       loadSize,
+      fabrics,
       // Admins can keep residents' free text private (Settings → "Show report notes publicly").
       note: config.notesPublic ? note : null,
     }));
