@@ -6,10 +6,11 @@ Finding the best setting for dorm laundry (starting at Hedrick Summit) so no mor
 
 - whether the machine **works** (Works / Caution / Broken / No reports)
 - for dryers, the **setting that actually dries** without cooking your clothes
-- optionally, **what to use for their load**: tap what's in it (athletic wear, towels, wool…) and how full it is, and get the setting for that machine and that load
+- optionally, **what to use for their load**: tap what's in it (athletic wear, towels, wool…), how thick it is and how full it is, and get the setting for that machine and that load. Over time it **learns from residents' reports** ("thick cotton came out damp on Medium here, so go one hotter")
+- on the room page, **when it's usually busy**: a bar per hour for each weekday, built from "I started it" taps
 - optionally, the **laundry helper**: describe your clothes in your own words ("gym leggings and a wool sweater") and an AI helper tells you which washer and dryer to use and on what setting, using the same rules and this room's reports
 
-A "Damaged clothes" report can say what got damaged and how, and any report can carry an optional photo of the load (admin-only by default).
+A "Damaged clothes" report can say what got damaged and how, and any report can carry an optional photo of the load (admin-only by default). Under each report, others can tap **Same here** or **Not for me**, which makes it count more or less.
 
 After a load, they report how it went in **3 taps**, with no login and no app. Status and recommendations come from recent reports, with time decay (see [PLAN.md §6](PLAN.md#6-algorithm-status-and-best-setting)).
 
@@ -36,13 +37,13 @@ npm run setup                     # creates local.db, runs migrations, seeds Hed
 npm run dev                       # http://localhost:3000
 ```
 
-- `/` redirects to the only room, `/b/hedrick-summit/laundry`.
+- `/` redirects to the only room, `/b/hedrick-summit/laundry`. The pilot is one building, so building navigation stays hidden until a second building has rooms.
 - Machine pages are at `/m/<code>`. The seed uses readable codes: `hsd1`–`hsd6` for dryers and `hsw1`–`hsw4` for washers. Try `/m/hsd2?r=1` to see what a QR scan opens.
 - Students can add the site to their home screen (it's a PWA), and switch light/dark/auto with the header toggle.
 - On a broken machine, **Notify me when it's fixed** sends one push notification when it works again (needs the `VAPID_*` keys below).
 - Admin is at `/admin`, using the password from `ADMIN_PASSWORD` (see below).
 
-To reset the demo data, run `npm run db:seed -- --reset`.
+To reset the demo data, run `npm run db:seed -- --reset`. The seed includes four weeks of past "I started it" timers so busy hours has something to show.
 
 ## The admin panel (`/admin`)
 

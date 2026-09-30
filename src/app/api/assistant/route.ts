@@ -51,6 +51,7 @@ export async function POST(req: Request) {
     offered: data.offered,
     minutesPerCycle: data.room.minutesPerCycle,
     focusCode: parsed.data.machineCode ?? null,
+    learned: data.learned,
     machines: data.machines.map((m) => ({
       code: m.code,
       kind: m.kind,

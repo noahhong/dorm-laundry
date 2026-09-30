@@ -4,6 +4,9 @@ test("home redirects to the only room, which shows machine cards", async ({ page
   await page.goto("/");
   await expect(page).toHaveURL(/\/b\/hedrick-summit\/laundry$/);
   await expect(page.getByRole("heading", { name: "Laundry room" })).toBeVisible();
+  // One building, one room: no back link that would just loop back here.
+  await expect(page.getByText("Hedrick Summit", { exact: true })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Hedrick Summit" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Dryer 3, Broken: No heat/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Dryer 2, Caution.*recommended Low/ })).toBeVisible();
   // Filter to washers hides dryers.

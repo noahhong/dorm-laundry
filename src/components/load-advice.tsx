@@ -1,8 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { FABRICS, FABRIC_LABEL, SETTING_LABEL, type DryerSetting, type MachineKind } from "@/lib/labels";
-import { suggestForLoad, type FabricRules, type LoadInput } from "@/lib/load-advice";
+import { FABRICS, FABRIC_LABEL, SETTING_LABEL, THICKNESSES, THICKNESS_HINT, THICKNESS_LABEL, type DryerSetting, type MachineKind } from "@/lib/labels";
+import { suggestForLoad, type FabricRules, type Learned, type LoadInput } from "@/lib/load-advice";
 import { parseLoad, readLoadRaw, subscribeLoad, writeLoad } from "@/lib/load-store";
 import type { Recommendation } from "@/lib/status";
 import { AlertIcon, ThermometerIcon } from "./icons";
@@ -19,17 +19,19 @@ type Props = {
   rec: Recommendation | null;
   rules: FabricRules;
   offered: readonly DryerSetting[];
+  /** What this room's past loads say per fabric and thickness (dryers only). */
+  learned?: Learned;
 };
 
 /** "What's in your load?": optional chips that tailor this machine's setting to the load. Not part of reporting. */
-export function LoadAdvice({ kind, rec, rules, offered }: Props) {
+export function LoadAdvice({ kind, rec, rules, offered, learned }: Props) {
   const raw = useSyncExternalStore(subscribeLoad, readLoadRaw, () => null);
   const load = parseLoad(raw);
-  const advice = suggestForLoad(kind, load, rules, rec, offered);
+  const advice = suggestForLoad(kind, load, rules, rec, offered, learned);
   const set = (next: Partial<LoadInput>) => writeLoad({ ...load, ...next });
   const toggle = (f: (typeof FABRICS)[number]) =>
     set({ fabrics: load.fabrics.includes(f) ? load.fabrics.filter((x) => x !== f) : [...load.fabrics, f] });
-  const empty = load.fabrics.length === 0 && !load.size;
+  const empty = load.fabrics.length === 0 && !load.size && !load.thickness;
 
   return (
     <section aria-labelledby="your-load" className="animate-fade-up mt-4 rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-e1" style={{ ["--i" as string]: 1 }}>
@@ -38,7 +40,7 @@ export function LoadAdvice({ kind, rec, rules, offered }: Props) {
           What&apos;s in your load?
         </h2>
         {!empty && (
-          <button type="button" onClick={() => writeLoad({ fabrics: [], size: null })} className="h-8 text-caption font-semibold text-accent">
+          <button type="button" onClick={() => writeLoad({ fabrics: [], size: null, thickness: null })} className="h-8 text-caption font-semibold text-accent">
             Clear
           </button>
         )}
@@ -62,6 +64,22 @@ export function LoadAdvice({ kind, rec, rules, offered }: Props) {
             </button>
           );
         })}
+      </div>
+
+      <p className="mt-3 text-label font-semibold text-text-2">How thick is most of it?</p>
+      <div role="group" aria-label="How thick is most of it?" className="mt-1 grid grid-cols-3 gap-1 rounded-[12px] bg-surface-2 p-1">
+        {THICKNESSES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            aria-pressed={load.thickness === t}
+            onClick={() => set({ thickness: load.thickness === t ? null : t })}
+            className={`pressable flex min-h-12 flex-col items-center justify-center rounded-[9px] px-1 py-1 ${load.thickness === t ? "bg-surface text-text shadow-e1" : "text-text-2"}`}
+          >
+            <span className="text-label font-semibold">{THICKNESS_LABEL[t]}</span>
+            <span className="text-[11px] leading-tight text-text-3">{THICKNESS_HINT[t]}</span>
+          </button>
+        ))}
       </div>
 
       <p className="mt-3 text-label font-semibold text-text-2">How much is in it?</p>

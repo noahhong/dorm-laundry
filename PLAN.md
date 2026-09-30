@@ -228,7 +228,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - ✅ Cloudflare **Turnstile** on report submit (invisible), turned on by setting two env vars.
 - ✅ **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring. Pre-fills the room's minutes per payment (dryers) or a site-wide default; the newest tap wins; reporting how it went, or "Stop timer", ends your own. Stored in `machine_runs`; logic is `currentRun` in `src/lib/status.ts`.
 - ✅ **Notify me** when a broken machine is marked fixed (Web Push via PWA, §17).
-- ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7). Still to do: learn per-fabric settings from the recorded fabrics.
+- ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7), with thickness, learning from residents' recorded loads per fabric and thickness.
 - ✅ **Laundry helper chat**: describe the clothes in your own words, get the machine and setting (§6.8). Only on once an admin saves an Anthropic API key in Settings (or `ANTHROPIC_API_KEY` is set).
 - ✅ Room-level fallback recommendation (§6.4).
 - ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
@@ -237,8 +237,8 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - Admin: moderation queue for flagged reports, CSV export, report counts over time.
 
 ### Later
-- Busy-hours heatmap from our own timer events.
-- "Me too" / flag-as-wrong on individual reports.
+- ✅ Busy hours from our own timer events (§6.10).
+- ✅ "Same here" / "Not for me" on individual reports (§6.9).
 - Multi-tenant self-serve onboarding for other campuses (a campus admin role).
 - Licensed WASH status integration, *only with written permission*.
 - Optional hardware sensor feed (current clamp) behind the same `reports` pipeline.
@@ -293,6 +293,7 @@ reports
   minutes       int null             -- minutes paid/run (optional)
   load_size     text enum null       -- small|medium|full|overstuffed
   fabrics       text (json array) null -- everyday|towels|jeans|athletic|delicates|wool|prints (v1, §6.7)
+  thickness     text null              -- thin|regular|thick (pilot, §6.7)
   note          text null            -- ≤ 280 chars, shown publicly
   device_hash   text                 -- sha256(device cookie + secret)
   ip_hash       text                 -- sha256(ip + day + secret); rate limiting only
@@ -307,6 +308,8 @@ reports
 
 - **Dryer outcome:** `dry` · `damp` · `wet` · `too_hot` · `damaged` · `not_working`
 - **Washer outcome:** `good` · `soaking` (didn't spin) · `dirty` · `damaged` (v1) · `not_working`
+
+`report_votes` (pilot, §6.9): `report_id` fk → reports (cascade) · `device_hash` · `ip_hash` · `vote` same|different · `created_at`; unique (report_id, device_hash).
 
 `report_photos` (v1): `report_id` pk/fk → reports (cascade) · `mime` · `bytes` blob · `created_at`. One optional load photo per report, downscaled on the phone (≤ 1024 px JPEG, ≤ 400 KB, usually 80–200 KB) and re-encoded, which strips EXIF/GPS. Kept in the database so it works with no file storage, locally or on Turso.
 - **Washer symptoms:** `took_money` · `wont_start` · `door_lock` · `wont_drain` · `no_spin` · `leaking` · `no_hot_water` · `stopped_midcycle` · `loud` · `dispenser` · `error_code` · `other`
@@ -440,7 +443,7 @@ Deliberately conservative: Low and Delicates are ignored (damp is expected there
 Status only. Washer settings are recorded (hot/warm/cold) but not learned from reports; §6.7 suggests a water temperature from the load's fabrics.
 
 ### 6.7 Load-based suggestions *(added in v1)*
-An optional "What's in your load?" card on every machine page. The resident taps fabrics (Everyday cotton, Towels & bedding, Jeans, Athletic / stretch, Delicates, Wool & sweaters, Graphic tees) and how full the drum is (Small / Medium / Full / Packed, washers and dryers). It never adds a step to reporting: the picks are kept on the phone and pre-fill the report's "More details".
+An optional "What's in your load?" card on every machine page. The resident taps fabrics (Everyday cotton, Towels & bedding, Jeans, Athletic / stretch, Delicates, Wool & sweaters, Graphic tees), how thick most of it is (Thin: tees, leggings, silk / Regular / Thick: hoodies, towels, denim) and how full the drum is (Small / Medium / Full / Packed, washers and dryers). It never adds a step to reporting: the picks are kept on the phone and pre-fill the report's "More details".
 
 **In the report** *(v1)*: a "Damaged clothes" report (dryers and washers) asks, optionally, *what* got damaged (the same fabric chips) and *how* (Melted or shiny, Shrunk, Lost stretch, Print cracked, Scorched or yellowed, Felted or pilled, Colors bled, Torn or snagged). Any non-broken report can carry one optional photo of the load, to show how full the drum was. Photos are admin-only by default (Settings → "Show load photos publicly"), served by `/api/photos/[id]`; a hidden or undone report's photo is always admin-only.
 
@@ -467,7 +470,22 @@ washer: pick    = coolest "wash max" among the picked fabrics; "Mixed load: Cold
 ```
 Starting from the machine's own learned setting is the point: "Low" on a dryer that runs hot is cooler than on its neighbour, and a dryer that dries fine on Low never gets pushed to High for towels. Implemented in `suggestForLoad` (`src/lib/load-advice.ts`), unit-tested.
 
-Reports record the fabrics (`reports.fabrics`, optional). Nothing reads them yet besides the report list and CSV; they are there so a later version can learn per-fabric outcomes per machine.
+Reports record the fabrics and thickness (`reports.fabrics`, `reports.thickness`, both optional, pre-filled from the picker).
+
+**Thickness.** Thick loads get "Thick items take longer: check seams, hoods and pockets"; thin loads on Medium or hotter get "Thin items dry fast: check it early"; a thick washer load gets "leave extra room so they rinse and spin out". On its own, thickness never changes the setting; learning does.
+
+**Learning** *(added for the pilot; Settings → Load advice)*. The room's recent dryer reports that say what was in the load are tallied per fabric, per thickness and per setting: loads, loads that came out too hot or damaged, and loads that came out damp or wet (`learnFabricOutcomes`). A damaged report that says *what* got damaged only blames those fabrics. Reports residents voted down to zero (§6.9) are skipped. Then, after the rules above pick a setting:
+
+```
+counts(f, s) = this fabric at this thickness on setting s, if it has ≥ "loads needed" (default 3); else any thickness; else nothing
+too hot:  while some fabric's counts at the pick say too hot in ≥ "share that must agree" (default 0.5) of loads:
+            go one cooler (skipping settings that run hot here); none left → "hang them to dry instead"
+damp:     else if some fabric's counts at the pick say damp in ≥ that share:
+            go one hotter if it's offered, within every fabric's limit, not in the dryer's avoid list and not itself
+            "too hot" by the counts; otherwise keep the pick and add "Add about 15 minutes, or split it into two loads"
+why:      "Residents here say thick everyday clothes came out damp on Medium (3 of 4 loads), so go one hotter."
+```
+So a thick cotton hoodie that keeps coming out damp on Medium moves to High, but jeans never go above their limit, and what thick loads taught doesn't apply to a thin load once thin loads have their own data. Counts are room-wide (the dryer's own heat is already in its base setting). The laundry helper passes thickness through `plan_load` and uses the same learning.
 
 ### 6.8 Laundry helper chat *(added in v1)*
 An "Ask the laundry helper" card on room and machine pages. The resident types what they're washing ("gym leggings and a white hoodie") and gets which washer and dryer to use and on what setting, with links to those machines. Optional: it never touches reporting, and the page works the same without it.
@@ -475,11 +493,11 @@ An "Ask the laundry helper" card on room and machine pages. The resident types w
 Claude (Anthropic's API) only does the language part. It maps the description onto the seven fabric categories of §6.7 and calls one tool, `plan_load`, which runs on our server:
 
 ```
-plan_load(fabrics, size):
+plan_load(fabrics, size, thickness):
   for washers and for dryers:
     ranked  = usable machines, best first: Works > No reports > Caution (Broken left out);
               weak dryers (§6.5) sink; more confident setting data wins; ties go to the machine the resident is at
-    pick    = suggestForLoad(kind, load, fabric limits, ranked[0].recommendation, room's offered settings)   -- §6.7
+    pick    = suggestForLoad(kind, load, fabric limits, ranked[0].recommendation, room's offered settings, learning)   -- §6.7
     also    = the other usable machines, the broken ones to avoid, and the setting for the machine the resident
               is standing at if it isn't the best one
 ```
@@ -491,14 +509,33 @@ So every setting the helper names comes from the admin's fabric limits and this 
 - **Limits** (Settings → Laundry helper chat): on/off, questions per network per hour (default 20), questions per day for the whole site (default 1,000). Counted in memory per server process, so a restart resets them.
 - Code: `src/lib/assistant.ts` (prompt, tool, ranking; pure, unit-tested), `src/lib/assistant-server.ts` (the Claude call), `POST /api/assistant`, `src/components/laundry-helper.tsx`. E2E runs against a local stand-in for the API (`tests/e2e/mock-anthropic.mjs`).
 
+### 6.9 "Same here" / "Not for me" *(added for the pilot)*
+Under each report on a machine page, other residents can tap **Same here** or **Not for me** (one tap, no login; not on your own report; tapping again takes it back; one vote per device per report, capped per device and per network per day like reports). Votes change the report's weight everywhere it counts (status, best setting, weak-dryer detection, load learning):
+
+```
+weight = trust × clamp(1 + same × "Same here" weight − different × "Not for me" weight, 0, "most a report can count")
+defaults: 0.5, 0.5, 2.5   → two "Same here" double it; two more "Not for me" than "Same here" and it's ignored
+```
+Each "Same here" on a broken report also counts as another device toward "Reports needed to mark Broken" (unless the "Same here" weight is 0), so a second resident can confirm a breakdown without filing their own report. Implemented as `votedTrust` in `src/lib/status.ts`, applied when reports are loaded (`src/lib/queries.ts`); the action is `voteOnReport`.
+
+### 6.10 Busy hours *(added for the pilot)*
+A "When is it busy?" card on the room page: a bar per hour (6am to midnight) for each weekday, today first, plus "Right now: usually quiet / busy / packed" and "Quietest later today: 9–11am". Built from the room's "I started it" timers over the last few weeks (Settings → "I started it" timer: on/off, look-back weeks, taps needed before it shows):
+
+```
+for each timer: from start until it was stopped (or its estimate ran out), split across local hours → machine-hours per weekday × hour
+share(day, hour) = machine-hours ÷ (how many of that weekday the look-back covers) ÷ machines in the room
+level: quiet < 0.25 ≤ busy < 0.6 ≤ packed
+```
+Local time uses Settings → Site → Time zone (default America/Los_Angeles). It's only as good as the taps, so it stays hidden until the room has enough of them (default 20). Code: `src/lib/busy.ts` (pure, unit-tested), `busyForRoom` in `src/lib/queries.ts`, `src/components/busy-hours.tsx`.
+
 ---
 
 ## 7. Pages and routes
 
 | Route | Type | Purpose |
 |---|---|---|
-| `/` | server | Building and room picker. Redirects to the only room if there is exactly one room. |
-| `/b/[building]/[room]` | server + small client filter | Room grid (§9.6 wireframe A) |
+| `/` | server | Opens the only room when one building has one room (the Hedrick Summit pilot). One building with several rooms lists just its rooms; the building picker only appears once a second building has rooms. Buildings without rooms are ignored. The room page drops its back link when `/` would only loop back to it (`src/lib/home.ts`). |
+| `/b/[building]/[room]` | server + small client filter | Room grid (§9.6 wireframe A), busy hours (§6.10) |
 | `/m/[code]` | server + client sheet | Machine detail (B). `?r=1` opens the report sheet (C). This is the QR target. |
 | `/about` | static | How it works, privacy, "not affiliated with WASH" |
 | `/admin/login` | server action | Password login |
@@ -955,13 +992,13 @@ Nothing the owner might want to change is hard-coded any more.
 **What can be changed**
 | Group | Settings |
 |---|---|
-| Site | name, tagline, announcement banner, notes public/admin-only, load photos on/off and public/admin-only, untested-dryer suggestion on/off |
-| Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost |
+| Site | name, tagline, time zone, announcement banner, notes public/admin-only, load photos on/off and public/admin-only, untested-dryer suggestion on/off |
+| Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost, "Same here" / "Not for me" weights and cap (§6.9) |
 | Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
-| Load advice | on/off; per fabric: hottest dryer setting and hottest wash water (§6.7) |
+| Load advice | on/off; learning on/off, loads needed, share that must agree; per fabric: hottest dryer setting and hottest wash water (§6.7) |
 | Laundry helper chat | the Anthropic API key (write-only, encrypted); on/off, questions per network per hour, questions per day site-wide (§6.8) |
 | Weak-dryer detection | on/off, reports needed, damp share, sibling damp share, gap |
-| "I started it" timer | default washer and dryer cycle length, how long "should be done" shows after the estimate |
+| "I started it" timer | default washer and dryer cycle length, how long "should be done" shows after the estimate; busy hours on/off, look-back, taps needed (§6.10) |
 | Abuse | per-machine cooldown, reports per device/day, per network/day, minimum fill time, undo window |
 
 **Broken quorum.** This resolves open question 9 without forcing a choice: the default stays at 1 (fast warnings); setting it to 2 means a single script can no longer mark a machine Broken, and admins can still mark out of order directly. The quorum counts distinct devices, so one phone can't satisfy it twice.

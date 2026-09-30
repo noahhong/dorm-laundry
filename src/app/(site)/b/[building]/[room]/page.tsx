@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { BusyHours } from "@/components/busy-hours";
 import { BackLink, Page } from "@/components/chrome";
 import { StatusIcon, QrIcon } from "@/components/icons";
 import { KindFilter } from "@/components/kind-filter";
@@ -8,7 +9,8 @@ import { MachineCard } from "@/components/machine-card";
 import { TONE } from "@/components/status";
 import { assistantConfigured } from "@/lib/assistant-server";
 import { getConfig } from "@/lib/config-server";
-import { getRoom, type MachineView } from "@/lib/queries";
+import { homeLinkLabel, resolveHome } from "@/lib/home";
+import { busyForRoom, getRoom, listBuildingsWithRooms, type MachineView } from "@/lib/queries";
 import type { StatusLevel } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -44,9 +46,12 @@ function Summary({ machines }: { machines: MachineView[] }) {
 
 export default async function RoomPage(props: PageProps<"/b/[building]/[room]">) {
   const { building, room } = await props.params;
-  const data = await getRoom(building, room);
+  const [data, buildings] = await Promise.all([getRoom(building, room), listBuildingsWithRooms()]);
   if (!data) notFound();
+  // With one building and one room, "/" is this page, so the back link would go nowhere.
+  const backLabel = homeLinkLabel(resolveHome(buildings), { building, room });
   const now = data.now;
+  const busy = await busyForRoom(data.room.id, data.machines.length, now, await getConfig());
   const dryers = data.machines.filter((m) => m.kind === "dryer");
   const washers = data.machines.filter((m) => m.kind === "washer");
   const empty = data.totalReports === 0;
@@ -55,7 +60,11 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
   return (
     <Page>
       <div className="mt-2">
-        <BackLink href="/">{data.building.name}</BackLink>
+        {backLabel ? (
+          <BackLink href="/">{backLabel}</BackLink>
+        ) : (
+          <p className="mt-2 text-caption uppercase tracking-wide text-text-3">{data.building.name}</p>
+        )}
         <h1 className="text-title text-text">{data.room.name}</h1>
         {data.room.locationHint && <p className="text-label text-text-3">{data.room.locationHint}</p>}
       </div>
@@ -73,6 +82,9 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
           </div>
         </div>
       )}
+
+      {/* Usual busy hours from "I started it" taps (PLAN.md §6.10) */}
+      {busy && <BusyHours share={busy.share} today={busy.today} hour={busy.hour} runs={busy.runs} />}
 
       {/* AI helper: clothes → machine and setting (PLAN.md §6.8) */}
       {helper && <LaundryHelper roomId={data.room.id} />}

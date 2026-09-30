@@ -4,7 +4,7 @@ import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { getDb } from "@/lib/db";
-import { buildings, machineRuns, machines, pushSubscriptions, reportPhotos, reports, rooms } from "@/lib/db/schema";
+import { buildings, machineRuns, machines, pushSubscriptions, reportPhotos, reports, reportVotes, rooms } from "@/lib/db/schema";
 import { getConfig } from "@/lib/config-server";
 import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
 import { notifyIfFixed, pruneExpiredWatches, pushPublicKey, watcherCount } from "@/lib/push";
@@ -14,7 +14,7 @@ import { offeredSettings } from "@/lib/rooms";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
 import { decodePhoto } from "@/lib/photo";
-import { checkForKind, reportSchema, runSchema, type ReportPayload, type RunPayload } from "@/lib/validation";
+import { checkForKind, reportSchema, runSchema, voteSchema, type ReportPayload, type RunPayload } from "@/lib/validation";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -77,6 +77,7 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
     minutes: p.minutes ?? null,
     loadSize: p.loadSize ?? null,
     fabrics: p.outcome === "not_working" ? null : (p.fabrics ?? null),
+    thickness: p.outcome === "not_working" ? null : (p.thickness ?? null),
     damagedItems: damaged ? uniq(p.damagedItems) : null,
     damageKinds: damaged ? uniq(p.damageKinds) : null,
     note: p.note ?? null,
@@ -94,6 +95,51 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
   // A "works now" report may be the fix people are waiting for; send pushes after the response.
   if (pushPublicKey()) after(() => notifyIfFixed(machine.id));
   return { ok: true, id };
+}
+
+/**
+ * "Same here" / "Not for me" on someone else's report (PLAN.md §6.9). One vote per device per report; voting the
+ * same way again takes it back. Votes change how much the report counts toward status and settings.
+ */
+export async function voteOnReport(payload: unknown): Promise<ActionResult> {
+  const parsed = voteSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, error: "Couldn't record that." };
+  const { reportId, vote } = parsed.data;
+  const db = getDb();
+  const config = await getConfig();
+  const now = Date.now();
+  const [report] = await db
+    .select({ id: reports.id, machineId: reports.machineId, deviceHash: reports.deviceHash, createdAt: reports.createdAt })
+    .from(reports)
+    .where(and(eq(reports.id, reportId), isNull(reports.hiddenAt), isNull(reports.undoneAt)))
+    .limit(1);
+  if (!report || report.createdAt < now - config.windowDays * 24 * 3_600_000) return { ok: false, error: "That report is too old to vote on." };
+
+  const device = (await deviceHash({ create: true }))!;
+  if (report.deviceHash === device) return { ok: false, error: "That's your own report." };
+  const [existing] = await db
+    .select({ vote: reportVotes.vote })
+    .from(reportVotes)
+    .where(and(eq(reportVotes.reportId, reportId), eq(reportVotes.deviceHash, device)));
+  if (existing?.vote === vote) {
+    await db.delete(reportVotes).where(and(eq(reportVotes.reportId, reportId), eq(reportVotes.deviceHash, device)));
+  } else {
+    // Same daily caps as reports, counted separately.
+    const ip = await ipHash(now);
+    const dayAgo = now - 24 * 3_600_000;
+    const [byDevice] = await db.select({ n: count() }).from(reportVotes).where(and(eq(reportVotes.deviceHash, device), gte(reportVotes.createdAt, dayAgo)));
+    if (byDevice.n >= config.rateDevicePerDay) return { ok: false, error: "That's a lot of votes today. Try again tomorrow." };
+    const [byIp] = await db.select({ n: count() }).from(reportVotes).where(and(eq(reportVotes.ipHash, ip), gte(reportVotes.createdAt, dayAgo)));
+    if (byIp.n >= config.rateIpPerDay) return { ok: false, error: "Too many votes from this network today." };
+    await db
+      .insert(reportVotes)
+      .values({ reportId, deviceHash: device, ipHash: ip, vote, createdAt: now })
+      .onConflictDoUpdate({ target: [reportVotes.reportId, reportVotes.deviceHash], set: { vote, ipHash: ip, createdAt: now } });
+  }
+  await revalidateMachine(report.machineId);
+  // A "Same here" on a works-now report can be what flips a machine back to working.
+  if (pushPublicKey()) after(() => notifyIfFixed(report.machineId));
+  return { ok: true, id: reportId };
 }
 
 /** Let a reporter take back their own report shortly after sending it. */

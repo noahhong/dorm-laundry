@@ -3,7 +3,7 @@
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.MOCK_ANTHROPIC_PORT ?? 3101);
-const WORDS = { leggings: "athletic", towels: "towels", sweater: "wool", jeans: "jeans" };
+const WORDS = { leggings: "athletic", towels: "towels", sweater: "wool", jeans: "jeans", hoodie: "everyday" };
 
 const message = (content, stop_reason) => ({
   id: `msg_${Math.random().toString(36).slice(2)}`,
@@ -40,7 +40,7 @@ createServer((req, res) => {
       const q = String(last.content).toLowerCase();
       const fabrics = Object.entries(WORDS).filter(([w]) => q.includes(w)).map(([, f]) => f);
       out = fabrics.length
-        ? message([{ type: "tool_use", id: "toolu_1", name: "plan_load", input: { fabrics, size: "unknown" } }], "tool_use")
+        ? message([{ type: "tool_use", id: "toolu_1", name: "plan_load", input: { fabrics, size: "unknown", thickness: q.includes("thick") ? "thick" : "unknown" } }], "tool_use")
         : message([{ type: "text", text: "What's in the load?" }], "end_turn");
     }
     res.end(JSON.stringify(out));
