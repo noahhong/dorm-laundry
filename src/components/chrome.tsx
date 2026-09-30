@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronLeft } from "./icons";
+import { ThemeToggle } from "./theme-toggle";
 
 export function AppHeader() {
   return (
@@ -10,9 +11,12 @@ export function AppHeader() {
         </span>
         Dorm Laundry
       </Link>
-      <Link href="/about" className="inline-flex h-11 items-center px-2 text-label text-text-3 hover:text-text">
-        About
-      </Link>
+      <div className="flex items-center">
+        <ThemeToggle />
+        <Link href="/about" className="inline-flex h-11 items-center px-2 text-label text-text-3 hover:text-text">
+          About
+        </Link>
+      </div>
     </header>
   );
 }
