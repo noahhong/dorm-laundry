@@ -228,7 +228,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - ✅ Cloudflare **Turnstile** on report submit (invisible), turned on by setting two env vars.
 - ✅ **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring. Pre-fills the room's minutes per payment (dryers) or a site-wide default; the newest tap wins; reporting how it went, or "Stop timer", ends your own. Stored in `machine_runs`; logic is `currentRun` in `src/lib/status.ts`.
 - **Notify me** when a broken machine is marked fixed (Web Push via PWA).
-- **Fabric-aware tips** ("Athletic wear? Use Low on this machine").
+- ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7). Still to do: learn per-fabric settings from the recorded fabrics.
 - ✅ Room-level fallback recommendation (§6.4).
 - ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
 - ✅ PWA manifest + add-to-home-screen. Still to do: favorite room.
@@ -291,6 +291,7 @@ reports
   error_code    text null            -- ≤ 8 chars, uppercased ("OE", "F21")
   minutes       int null             -- minutes paid/run (optional)
   load_size     text enum null       -- small|medium|full|overstuffed
+  fabrics       text (json array) null -- everyday|towels|jeans|athletic|delicates|wool|prints (v1, §6.7)
   note          text null            -- ≤ 280 chars, shown publicly
   device_hash   text                 -- sha256(device cookie + secret)
   ip_hash       text                 -- sha256(ip + day + secret); rate limiting only
@@ -431,7 +432,35 @@ flag if   reports ≥ 3   and   rate ≥ 0.45
 Deliberately conservative: Low and Delicates are ignored (damp is expected there), broken dryers are excluded (their wet loads say nothing about the rest), and if the whole room is weak nothing is flagged, since that points at the room. Implemented in `detectWeakDryers` (`src/lib/status.ts`).
 
 ### 6.6 Washers
-Status only. Washer settings are recorded (hot/warm/cold) but not recommended in the MVP.
+Status only. Washer settings are recorded (hot/warm/cold) but not learned from reports; §6.7 suggests a water temperature from the load's fabrics.
+
+### 6.7 Load-based suggestions *(added in v1)*
+An optional "What's in your load?" card on every machine page. The resident taps fabrics (Everyday cotton, Towels & bedding, Jeans, Athletic / stretch, Delicates, Wool & sweaters, Graphic tees) and, on dryers, a load size. It never adds a step to reporting: the picks are kept on the phone and pre-fill the report's "More details".
+
+Each fabric has two admin-editable limits (Settings → Load advice): the hottest dryer setting and the hottest wash water. Defaults come from the fabric table in §2.2:
+
+| Fabric | Dryer max | Wash max |
+|---|---|---|
+| Everyday cotton | High | Warm |
+| Towels & bedding | High | Hot |
+| Jeans | Medium | Cold |
+| Athletic / stretch | Low | Cold |
+| Delicates | Delicates | Cold |
+| Wool & sweaters | No heat | Cold |
+| Graphic tees | Low | Cold |
+
+```
+dryer:  base    = this dryer's recommendation (§6.3/6.4), or the no-data default
+        limit   = coolest "dryer max" among the picked fabrics
+        pick    = hottest setting the room offers that is ≤ min(base, limit) and not in this dryer's "avoid" list
+                  (if none is cool enough: the coolest offered, and "hang the wool to dry instead")
+        tips    = "expect it to take longer" and "or dry the athletic wear separately and the rest on <base>" when pick < base;
+                  full / small load hints; care tips (prints inside out, wool flat)
+washer: pick    = coolest "wash max" among the picked fabrics; "Mixed load: Cold is safe for all of it"
+```
+Starting from the machine's own learned setting is the point: "Low" on a dryer that runs hot is cooler than on its neighbour, and a dryer that dries fine on Low never gets pushed to High for towels. Implemented in `suggestForLoad` (`src/lib/load-advice.ts`), unit-tested.
+
+Reports record the fabrics (`reports.fabrics`, optional). Nothing reads them yet besides the report list and CSV; they are there so a later version can learn per-fabric outcomes per machine.
 
 ---
 
@@ -893,6 +922,7 @@ Nothing the owner might want to change is hard-coded any more.
 | Site | name, tagline, announcement banner, notes public/admin-only, untested-dryer suggestion on/off |
 | Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost |
 | Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
+| Load advice | on/off; per fabric: hottest dryer setting and hottest wash water (§6.7) |
 | Weak-dryer detection | on/off, reports needed, damp share, sibling damp share, gap |
 | "I started it" timer | default washer and dryer cycle length, how long "should be done" shows after the estimate |
 | Abuse | per-machine cooldown, reports per device/day, per network/day, minimum fill time, undo window |

@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { resetSettings, saveSettings, type FormState } from "@/app/admin/actions";
-import { FIELDS, GROUPS, type Config, type Field } from "@/lib/config";
+import { FIELDS, GROUPS, optionLabel, type Config, type Field } from "@/lib/config";
 import { Pill } from "./ui";
 
 const control = "h-11 w-full rounded-[var(--radius-xs)] border border-border-strong/60 bg-surface px-3 text-body text-text";
@@ -26,6 +26,17 @@ function Control({ f, value, invalid }: { f: Field; value: Config[Field["key"]];
         <span className="h-7 w-12 rounded-full bg-surface-3 transition-colors peer-checked:bg-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--accent)]" />
         <span className="pointer-events-none absolute left-1 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
       </label>
+    );
+  }
+  if (f.kind === "choice") {
+    return (
+      <select id={f.key} name={f.key} defaultValue={String(value)} aria-describedby={describedBy} aria-invalid={invalid} className={`${control} max-w-[12rem]`}>
+        {f.options.map((o) => (
+          <option key={o} value={o}>
+            {optionLabel(o)}
+          </option>
+        ))}
+      </select>
     );
   }
   if (f.kind === "longtext") {
@@ -56,6 +67,7 @@ function Control({ f, value, invalid }: { f: Field; value: Config[Field["key"]];
 
 function fmtDefault(f: Field) {
   if (f.kind === "bool") return f.default ? "on" : "off";
+  if (f.kind === "choice") return optionLabel(f.default);
   if (f.kind === "text" || f.kind === "longtext") return f.default === "" ? "empty" : `“${String(f.default).slice(0, 40)}${String(f.default).length > 40 ? "…" : ""}”`;
   return `${f.default}${"unit" in f && f.unit ? ` ${f.unit}` : ""}`;
 }
@@ -89,7 +101,7 @@ export function SettingsForm({ values }: { values: Config }) {
                         {changed && <Pill tone="accent">Changed</Pill>}
                       </p>
                       <p id={`${f.key}-help`} className="mt-0.5 text-caption text-text-3">
-                        {f.help} <span className="whitespace-nowrap">Default: {fmtDefault(f)}.</span>
+                        {f.help ? `${f.help} ` : ""}<span className="whitespace-nowrap">Default: {fmtDefault(f)}.</span>
                       </p>
                     </div>
                     <div>

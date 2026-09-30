@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DRYER_OUTCOMES, DRYER_SETTINGS, DRYER_SYMPTOMS, LOAD_SIZES, WASHER_OUTCOMES, WASHER_SETTINGS, WASHER_SYMPTOMS } from "./labels";
+import { DRYER_OUTCOMES, FABRICS, DRYER_SETTINGS, DRYER_SYMPTOMS, LOAD_SIZES, WASHER_OUTCOMES, WASHER_SETTINGS, WASHER_SYMPTOMS } from "./labels";
 
 export const reportSchema = z.object({
   code: z.string().min(4).max(16),
@@ -15,6 +15,12 @@ export const reportSchema = z.object({
     .optional(),
   minutes: z.coerce.number().int().min(1).max(240).nullable().optional(),
   loadSize: z.enum(LOAD_SIZES).nullable().optional(),
+  fabrics: z
+    .array(z.enum(FABRICS))
+    .max(FABRICS.length)
+    .transform((a) => (a.length ? [...new Set(a)] : null))
+    .nullable()
+    .optional(),
   note: z
     .string()
     .trim()

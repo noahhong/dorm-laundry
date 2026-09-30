@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "33915c0a-9752-4b69-ab2a-f191637ca607",
-  "prevId": "d20cc247-852f-4c87-a95b-43ca7a1f1f56",
+  "id": "e82dadc0-8885-49c4-b321-8aa0b82e4452",
+  "prevId": "33915c0a-9752-4b69-ab2a-f191637ca607",
   "tables": {
     "audit_log": {
       "name": "audit_log",
@@ -146,6 +146,104 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "machine_runs": {
+      "name": "machine_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "device_hash": {
+          "name": "device_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ip_hash": {
+          "name": "ip_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "machine_runs_machine_time": {
+          "name": "machine_runs_machine_time",
+          "columns": [
+            "machine_id",
+            "started_at"
+          ],
+          "isUnique": false
+        },
+        "machine_runs_device_time": {
+          "name": "machine_runs_device_time",
+          "columns": [
+            "device_hash",
+            "started_at"
+          ],
+          "isUnique": false
+        },
+        "machine_runs_ip_time": {
+          "name": "machine_runs_ip_time",
+          "columns": [
+            "ip_hash",
+            "started_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "machine_runs_machine_id_machines_id_fk": {
+          "name": "machine_runs_machine_id_machines_id_fk",
+          "tableFrom": "machine_runs",
+          "tableTo": "machines",
+          "columnsFrom": [
+            "machine_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

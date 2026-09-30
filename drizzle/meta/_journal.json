@@ -26,8 +26,15 @@
     {
       "idx": 3,
       "version": "6",
-      "when": 1790794280815,
-      "tag": "0003_timer",
+      "when": 1790794396633,
+      "tag": "0003_load_fabrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790795686441,
+      "tag": "0004_timer",
       "breakpoints": true
     }
   ]

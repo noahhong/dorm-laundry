@@ -63,6 +63,8 @@ export const reports = sqliteTable(
     errorCode: text("error_code"),
     minutes: integer("minutes"),
     loadSize: text("load_size"),
+    /** What was in the load (FABRICS in labels.ts), when the reporter said. Recorded for learning per-fabric settings later. */
+    fabrics: text("fabrics", { mode: "json" }).$type<string[] | null>(),
     note: text("note"),
     deviceHash: text("device_hash").notNull(),
     ipHash: text("ip_hash").notNull(),
