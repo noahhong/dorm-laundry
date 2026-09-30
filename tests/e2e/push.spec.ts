@@ -53,7 +53,8 @@ test("a resident asks to be told when a broken washer is fixed, and an admin's M
   await page.getByRole("button", { name: "Notify me when it's fixed" }).click();
   await expect(page.getByRole("button", { name: "Cancel notification" })).toBeVisible();
 
-  const admin = await (await browser.newContext()).newPage();
+  // Its own client IP: v1.spec's lockout test may already have locked localhost out of admin login.
+  const admin = await (await browser.newContext({ extraHTTPHeaders: { "x-real-ip": "10.9.8.7" } })).newPage();
   await admin.goto("/admin/login");
   await admin.getByLabel("Password").fill("e2e-password");
   await admin.getByRole("button", { name: "Log in" }).click();
