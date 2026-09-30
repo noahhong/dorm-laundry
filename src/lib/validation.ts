@@ -1,0 +1,42 @@
+import { z } from "zod";
+import { DRYER_OUTCOMES, DRYER_SETTINGS, DRYER_SYMPTOMS, LOAD_SIZES, WASHER_OUTCOMES, WASHER_SETTINGS, WASHER_SYMPTOMS } from "./labels";
+
+export const reportSchema = z.object({
+  code: z.string().min(4).max(16),
+  outcome: z.string(),
+  setting: z.string().nullable().optional(),
+  symptoms: z.array(z.string()).max(6).default([]),
+  errorCode: z
+    .string()
+    .trim()
+    .max(8)
+    .transform((s) => s.toUpperCase().replace(/[^A-Z0-9-]/g, "") || null)
+    .nullable()
+    .optional(),
+  minutes: z.coerce.number().int().min(1).max(240).nullable().optional(),
+  loadSize: z.enum(LOAD_SIZES).nullable().optional(),
+  note: z
+    .string()
+    .trim()
+    .max(280)
+    .transform((s) => s || null)
+    .nullable()
+    .optional(),
+  /** Honeypot: humans never see this field. */
+  website: z.string().max(0).optional(),
+  /** ms the sheet was open; bots submit instantly. */
+  elapsedMs: z.number().int().min(0).optional(),
+});
+export type ReportPayload = z.input<typeof reportSchema>;
+
+/** Kind-specific enum checks the generic schema can't express. Returns an error message or null. */
+export function checkForKind(kind: "washer" | "dryer", p: z.output<typeof reportSchema>): string | null {
+  const outcomes: readonly string[] = kind === "dryer" ? DRYER_OUTCOMES : WASHER_OUTCOMES;
+  const settings: readonly string[] = kind === "dryer" ? DRYER_SETTINGS : WASHER_SETTINGS;
+  const symptoms: readonly string[] = kind === "dryer" ? DRYER_SYMPTOMS : WASHER_SYMPTOMS;
+  if (!outcomes.includes(p.outcome)) return "Pick how it went.";
+  if (p.setting && !settings.includes(p.setting)) return "Unknown setting.";
+  if (p.symptoms.some((s) => !symptoms.includes(s))) return "Unknown problem type.";
+  if (kind === "dryer" && p.outcome !== "not_working" && !p.setting) return "Which setting did you use?";
+  return null;
+}
