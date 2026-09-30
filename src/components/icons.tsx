@@ -139,6 +139,12 @@ export const AlertIcon = ({ size = 16, ...p }: P) => (
     <path d="M12 10v4m0 3h.01" />
   </svg>
 );
+export const BellIcon = ({ size = 20, ...p }: P) => (
+  <svg {...base(size, p)}>
+    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+  </svg>
+);
 export const ExternalIcon = ({ size = 14, ...p }: P) => (
   <svg {...base(size, p)}>
     <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />

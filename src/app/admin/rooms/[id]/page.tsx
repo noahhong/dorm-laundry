@@ -7,6 +7,7 @@ import { BackLink } from "@/components/chrome";
 import { QrIcon } from "@/components/icons";
 import { StatusBadge } from "@/components/status";
 import { requireAdmin } from "@/lib/admin-auth";
+import { watchersByMachine } from "@/lib/admin-queries";
 import { timeAgo } from "@/lib/format";
 import { DRYER_SETTINGS, OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL } from "@/lib/labels";
 import { getRoomById, recentReportsForRoom } from "@/lib/queries";
@@ -40,7 +41,7 @@ export default async function AdminRoom(props: PageProps<"/admin/rooms/[id]">) {
   const { id } = await props.params;
   const data = await getRoomById(id, undefined, { includeRetired: true });
   if (!data) notFound();
-  const reports = await recentReportsForRoom(id);
+  const [reports, watchers] = await Promise.all([recentReportsForRoom(id), watchersByMachine(id)]);
   const now = data.now;
   const live = data.machines.filter((m) => !m.retiredAt);
   const count = (l: string) => live.filter((m) => m.status.level === l).length;
@@ -170,6 +171,7 @@ export default async function AdminRoom(props: PageProps<"/admin/rooms/[id]">) {
             <p className="mt-1 text-caption text-text-3">
               {m.status.lastReportAt ? `Last report ${timeAgo(m.status.lastReportAt, now)}` : "No reports yet"}
               {m.adminNote ? ` · note: ${m.adminNote}` : ""}
+              {watchers.get(m.id) ? ` · ${watchers.get(m.id)} waiting to hear it's fixed` : ""}
             </p>
 
             <details className="mt-2">

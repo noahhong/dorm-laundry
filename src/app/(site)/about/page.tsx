@@ -58,6 +58,8 @@ export default async function About() {
           <p>
             No accounts. We set one random cookie so each phone counts once, and store only a hash of it. Your IP address is never
             stored; a daily-salted hash is kept for rate limiting. Notes you write are public, so please don&apos;t include names.
+            If you ask to be notified when a machine is fixed, we keep your browser&apos;s push address until we send that one
+            notification, you cancel, or 90 days pass. Nothing else about you is attached to it.
           </p>
         </section>
         <p className="rounded-[12px] bg-surface-2 p-3 text-label">
