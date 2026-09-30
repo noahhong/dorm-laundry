@@ -62,13 +62,14 @@ test("admin can add machines and print QR codes", async ({ page }) => {
   await expect(page).toHaveURL(/\/admin\/login/);
   await page.getByLabel("Password").fill("e2e-password");
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
-  await page.getByRole("link", { name: /Laundry room/ }).click();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Admin" }).first().getByRole("link", { name: "Rooms & machines" }).click();
+  await page.getByRole("link", { name: /Laundry room/ }).first().click();
 
   await page.getByLabel("Kind").selectOption("dryer");
   await page.getByLabel("From #").fill("7");
   await page.getByLabel("To #").fill("8");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add machines" }).click();
   await expect(page.getByText("Added 2 dryers.")).toBeVisible();
   await expect(page.getByText("Dryer 8", { exact: true })).toBeVisible();
 

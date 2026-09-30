@@ -444,8 +444,13 @@ Status only. Washer settings are recorded (hot/warm/cold) but not recommended in
 | `/m/[code]` | server + client sheet | Machine detail (B). `?r=1` opens the report sheet (C). This is the QR target. |
 | `/about` | static | How it works, privacy, "not affiliated with WASH" |
 | `/admin/login` | server action | Password login |
-| `/admin` | server | Buildings and rooms; create forms |
-| `/admin/rooms/[id]` | server | Machines table: add in bulk, rename, out-of-order, mark fixed, retire; recent reports with hide |
+| `/admin` | server | **Dashboard**: report trends, top problems, machines needing attention, per-room overview, rules in effect, recent admin activity |
+| `/admin/rooms` | server | Buildings and rooms: create, rename, delete (type-the-name confirmation) |
+| `/admin/rooms/[id]` | server | Room settings (**which dryer settings the room has**, minutes per payment, WASH code); machines: add in bulk, rename, out-of-order, mark fixed, retire; recent reports; delete room |
+| `/admin/reports` | server | Global moderation: search and filter, hide/unhide one or many |
+| `/admin/reports/export` | route handler | CSV download of the filtered reports (admin only) |
+| `/admin/settings` | server + client form | Every tunable rule, live (see §16) |
+| `/admin/audit` | server | Activity log of all admin actions |
 | `/admin/rooms/[id]/qr` | server, print CSS | Printable QR sticker sheet (Letter, 3×4) |
 
 ### API
@@ -788,6 +793,9 @@ Layered, cheapest first:
 | M5 | Other campuses | Campus admin role, self-serve onboarding, i18n | later |
 
 ## 15. Open questions for the owner
+
+> **Update:** most of these are now **settings you change yourself** in `/admin` instead of questions for me: which dryer settings a room has and minutes per payment (Rooms & machines), how many reports mark a machine Broken, public vs admin-only notes, site name, and every threshold (Settings). The defaults below are what ships until you change them.
+
 1. **Which rooms first?** How many laundry rooms does Hedrick Summit have, and roughly how many washers and dryers are in each? Are machines stacked (top/bottom pockets)?
 2. **Dryer controls:** which settings do the dryers actually offer (High/Med/Low/Delicates/No Heat? Perm Press?) and how many minutes does one payment buy? This tunes the enum and the "extra time" tip.
 3. **Permission to post QR stickers:** do we need Housing or RA approval? Would Housing ask WASH for a status feed on our behalf?
@@ -862,3 +870,32 @@ Layered, cheapest first:
 - Vercel Geist: https://vercel.com/geist
 - Linear UI redesign: https://linear.app/blog/how-we-redesigned-the-linear-ui
 - Target size (WCAG 2.5.5): https://adrianroselli.com/2019/06/target-size-and-2-5-5.html
+
+---
+
+## 16. Admin-editable configuration *(added after the MVP)*
+
+Nothing the owner might want to change is hard-coded any more.
+
+**Where it lives**
+- `settings` table: one row per key, JSON value, `updated_at`. A missing row means "use the default", so a fresh database works and a bad row can't break the site (invalid values fall back per field).
+- `rooms.dryer_settings` (JSON subset of the heat ladder, `null` = all five) and `rooms.minutes_per_cycle`.
+- `audit_log`: every admin action, with before → after for settings.
+
+**How it is wired**
+- `src/lib/config.ts` has one descriptor list (`FIELDS`) that drives the defaults, validation, cross-field checks and the settings form, so adding a knob is one entry. `toParams` turns the config into the algorithm's `Params`; a test asserts the defaults reproduce the built-in parameters exactly.
+- `src/lib/status.ts` takes `Params` (and a room's offered settings) as arguments, with defaults, so all earlier behavior and tests are unchanged.
+- Loaded once per request (`getConfig`, memoized), applied to public pages, the report action (rate limits, minimum time, undo window), the manifest and the metadata.
+
+**What can be changed**
+| Group | Settings |
+|---|---|
+| Site | name, tagline, announcement banner, notes public/admin-only, untested-dryer suggestion on/off |
+| Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost |
+| Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
+| Weak-dryer detection | on/off, reports needed, damp share, sibling damp share, gap |
+| Abuse | per-machine cooldown, reports per device/day, per network/day, minimum fill time, undo window |
+
+**Broken quorum.** This resolves open question 9 without forcing a choice: the default stays at 1 (fast warnings); setting it to 2 means a single script can no longer mark a machine Broken, and admins can still mark out of order directly. The quorum counts distinct devices, so one phone can't satisfy it twice.
+
+**Per-room dryer settings.** The report sheet offers only the room's settings, the server rejects others, and the ladder, the recommendation and the "no data" default (Medium if offered, else the lower middle of what is) are all restricted to them.
