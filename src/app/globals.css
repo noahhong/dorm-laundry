@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+/* ───────────────────────── Design tokens (PLAN.md §9) ───────────────────────── */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --surface-3: #e6e9ee;
+  --text: #111827;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --border: #e4e7ec;
+  --border-strong: #8a94a3;
+  --accent: #2e5bff;
+  --accent-fg: #ffffff;
+  --accent-tint: #e9eeff;
+
+  --works-fg: #067647;
+  --works-tint: #e7f6ec;
+  --works-icon: #079455;
+  --caution-fg: #8a4b00;
+  --caution-tint: #fef3dc;
+  --caution-icon: #c4620a;
+  --broken-fg: #b42318;
+  --broken-tint: #fdecea;
+  --broken-icon: #d92d20;
+  --unknown-fg: #475467;
+  --unknown-tint: #eef0f3;
+  --unknown-icon: #667085;
+
+  --shadow-e1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
+  --shadow-e2: 0 8px 24px rgb(16 24 40 / 0.12);
+  --shadow-e3: 0 -8px 32px rgb(16 24 40 / 0.18);
+  --scrim: rgb(10 12 16 / 0.4);
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 100ms;
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-sheet: 350ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0b0d10;
+    --surface: #16191e;
+    --surface-2: #1e2228;
+    --surface-3: #262b32;
+    --text: #f3f4f6;
+    --text-2: #aeb4be;
+    --text-3: #8b929c;
+    --border: #2a2f37;
+    --border-strong: #8b929c;
+    --accent: #8aa4ff;
+    --accent-fg: #0b0d10;
+    --accent-tint: #1b2340;
+
+    --works-fg: #6ce9a6;
+    --works-tint: #0f2e1f;
+    --works-icon: #32d583;
+    --caution-fg: #fdc96b;
+    --caution-tint: #33240a;
+    --caution-icon: #f5a524;
+    --broken-fg: #fda29b;
+    --broken-tint: #3a1512;
+    --broken-icon: #f97066;
+    --unknown-fg: #c0c6d0;
+    --unknown-tint: #23272e;
+    --unknown-icon: #8b929c;
+
+    --shadow-e1: 0 0 0 1px rgb(255 255 255 / 0.02);
+    --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.5);
+    --shadow-e3: 0 -8px 32px rgb(0 0 0 / 0.6);
+    --scrim: rgb(0 0 0 / 0.6);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-tint: var(--accent-tint);
+  --color-works-fg: var(--works-fg);
+  --color-works-tint: var(--works-tint);
+  --color-works-icon: var(--works-icon);
+  --color-caution-fg: var(--caution-fg);
+  --color-caution-tint: var(--caution-tint);
+  --color-caution-icon: var(--caution-icon);
+  --color-broken-fg: var(--broken-fg);
+  --color-broken-tint: var(--broken-tint);
+  --color-broken-icon: var(--broken-icon);
+  --color-unknown-fg: var(--unknown-fg);
+  --color-unknown-tint: var(--unknown-tint);
+  --color-unknown-icon: var(--unknown-icon);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Type scale: size / line-height / weight */
+  --text-display: 2rem;
+  --text-display--line-height: 2.375rem;
+  --text-display--font-weight: 700;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.75rem;
+  --text-title--font-weight: 650;
+  --text-headline: 1.0625rem;
+  --text-headline--line-height: 1.5rem;
+  --text-headline--font-weight: 600;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.25rem;
+  --text-label--font-weight: 500;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-caption--font-weight: 500;
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  --shadow-e1: var(--shadow-e1);
+  --shadow-e2: var(--shadow-e2);
+  --shadow-e3: var(--shadow-e3);
+
+  --ease-out: var(--ease-out);
+  --ease-sheet: var(--ease-sheet);
+}
+
+/* ───────────────────────── Base ───────────────────────── */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-feature-settings: "tnum" 1;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+::selection {
+  background: var(--accent-tint);
+}
+
+/* ───────────────────────── Motion ───────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.animate-fade-up {
+  animation: fade-up var(--dur-base) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 30ms);
+}
+.animate-sheet-in { animation: sheet-in var(--dur-sheet) var(--ease-sheet) both; }
+.animate-scrim-in { animation: scrim-in var(--dur-base) var(--ease-out) both; }
+.animate-toast-in { animation: toast-in var(--dur-base) var(--ease-out) both; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+.pressable {
+  transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.pressable:active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 150ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .animate-fade-up, .animate-sheet-in, .animate-toast-in { animation-name: scrim-in !important; }
+  .skeleton { animation: none; }
+  .pressable:active { transform: none; }
+}
+
+/* ───────────────────────── Print (QR sheets) ───────────────────────── */
+@media print {
+  @page { size: letter; margin: 0.4in; }
+  :root { color-scheme: light; }
+  body { background: #fff !important; color: #000 !important; }
+  .no-print { display: none !important; }
+}
