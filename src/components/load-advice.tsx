@@ -11,6 +11,7 @@ const SIZES = [
   { value: "small", label: "Small" },
   { value: "medium", label: "Medium" },
   { value: "full", label: "Full" },
+  { value: "overstuffed", label: "Packed" },
 ] as const;
 
 type Props = {
@@ -63,22 +64,20 @@ export function LoadAdvice({ kind, rec, rules, offered }: Props) {
         })}
       </div>
 
-      {kind === "dryer" && (
-        <div role="group" aria-label="Load size" className="mt-3 grid grid-cols-[auto_1fr_1fr_1fr] items-center gap-1 rounded-[12px] bg-surface-2 p-1">
-          <span className="px-2 text-caption font-semibold text-text-3">Size</span>
-          {SIZES.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              aria-pressed={load.size === s.value}
-              onClick={() => set({ size: load.size === s.value ? null : s.value })}
-              className={`pressable h-10 rounded-[9px] text-label font-semibold ${load.size === s.value ? "bg-surface text-text shadow-e1" : "text-text-2"}`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <p className="mt-3 text-label font-semibold text-text-2">How much is in it?</p>
+      <div role="group" aria-label="How much is in it?" className="mt-1 grid grid-cols-4 gap-1 rounded-[12px] bg-surface-2 p-1">
+        {SIZES.map((s) => (
+          <button
+            key={s.value}
+            type="button"
+            aria-pressed={load.size === s.value}
+            onClick={() => set({ size: load.size === s.value ? null : s.value })}
+            className={`pressable h-10 rounded-[9px] text-label font-semibold ${load.size === s.value ? "bg-surface text-text shadow-e1" : "text-text-2"}`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
 
       {advice && (
         <div aria-live="polite" data-testid="load-advice" className="animate-fade-up mt-4 rounded-[14px] bg-accent-tint p-4">

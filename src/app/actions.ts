@@ -4,7 +4,7 @@ import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { getDb } from "@/lib/db";
-import { buildings, machineRuns, machines, pushSubscriptions, reports, rooms } from "@/lib/db/schema";
+import { buildings, machineRuns, machines, pushSubscriptions, reportPhotos, reports, rooms } from "@/lib/db/schema";
 import { getConfig } from "@/lib/config-server";
 import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
 import { notifyIfFixed, pruneExpiredWatches, pushPublicKey, watcherCount } from "@/lib/push";
@@ -13,6 +13,7 @@ import { machineStatusById } from "@/lib/queries";
 import { offeredSettings } from "@/lib/rooms";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
+import { decodePhoto } from "@/lib/photo";
 import { checkForKind, reportSchema, runSchema, type ReportPayload, type RunPayload } from "@/lib/validation";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
@@ -49,6 +50,11 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
   const kindError = checkForKind(machine.kind, p, offeredSettings(room?.dryerSettings));
   if (kindError) return { ok: false, error: kindError };
 
+  const photo = p.photo && config.photosEnabled ? decodePhoto(p.photo) : null;
+  if (p.photo && config.photosEnabled && !photo) return { ok: false, error: "That photo didn't upload properly. Try again or skip it." };
+  const damaged = p.outcome === "damaged";
+  const uniq = (a: string[] | null | undefined) => (a && a.length ? [...new Set(a)] : null);
+
   const now = Date.now();
   const device = (await deviceHash({ create: true }))!;
   const ip = await ipHash(now);
@@ -71,11 +77,14 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
     minutes: p.minutes ?? null,
     loadSize: p.loadSize ?? null,
     fabrics: p.outcome === "not_working" ? null : (p.fabrics ?? null),
+    damagedItems: damaged ? uniq(p.damagedItems) : null,
+    damageKinds: damaged ? uniq(p.damageKinds) : null,
     note: p.note ?? null,
     deviceHash: device,
     ipHash: ip,
     trust: 1,
   });
+  if (photo) await db.insert(reportPhotos).values({ reportId: id, mime: "image/jpeg", bytes: photo, createdAt: now });
   // Reporting how it went means this device's load is out, so its "I started it" timer is done.
   await db
     .update(machineRuns)

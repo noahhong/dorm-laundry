@@ -14,7 +14,7 @@ export type FabricRules = Record<Fabric, FabricRule>;
 
 export interface LoadInput {
   fabrics: readonly Fabric[];
-  size: "small" | "medium" | "full" | null;
+  size: "small" | "medium" | "full" | "overstuffed" | null;
 }
 
 export interface LoadAdvice {
@@ -84,6 +84,7 @@ export function suggestForLoad(
     const { limit, who } = coolest(fabrics, (f) => rules[f].wash, wIdx);
     const setting = limit!;
     if (fabrics.length > 1 && fabrics.some((f) => rules[f].wash !== setting)) tips.push(`Mixed load: ${SETTING_LABEL[setting]} is safe for all of it`);
+    if (load.size === "overstuffed") tips.push("Packed washer: clothes won't get clean. Leave a hand's width free at the top");
     return { setting, why: `${SETTING_LABEL[setting]} water is right for ${nouns(who)}.`, cooler: false, tips };
   }
 
@@ -122,6 +123,7 @@ export function suggestForLoad(
     if (hardy.length > 0) tips.push(`Or dry the ${nouns(who)} separately and the ${nouns(hardy)} on ${SETTING_LABEL[base]}`);
   }
   if (load.size === "full" && !cooler) tips.push("Full load: expect it to take longer");
+  if (load.size === "overstuffed") tips.push("Packed drum: clothes dry unevenly and stay damp in the middle. Split it into two loads if you can");
   if (load.size === "small" && dIdx(setting) >= dIdx("medium")) tips.push("Small load: check it early, small loads over-dry");
   return { setting, why, cooler, tips };
 }

@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { listAllRooms, listReports } from "@/lib/admin-queries";
 import { ALL_OUTCOMES, parseFilters, STATES } from "./filters";
 import { timeAgo } from "@/lib/format";
-import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL } from "@/lib/labels";
+import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, damageSummary, loadSummary } from "@/lib/labels";
 import { bulkSetReportsHidden, toggleReportHidden } from "../actions";
 import { input } from "../styles";
 
@@ -132,7 +132,7 @@ export default async function ReportsAdmin(props: PageProps<"/admin/reports">) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ report: r, machineLabel, machineCode, roomName, buildingName, roomId }) => (
+                {rows.map(({ report: r, machineLabel, machineCode, roomName, buildingName, roomId, hasPhoto }) => (
                   <tr key={r.id} className={r.hiddenAt || r.undoneAt ? "opacity-55" : ""}>
                     <td className={td}>
                       <input type="checkbox" form="bulk-form" name="reportId" value={r.id} aria-label={`Select report on ${machineLabel}`} className="h-4 w-4 accent-[var(--accent)]" />
@@ -159,6 +159,14 @@ export default async function ReportsAdmin(props: PageProps<"/admin/reports">) {
                       {r.minutes ? ` · ${r.minutes} min` : ""}
                       {r.symptoms.length > 0 && <span className="block text-caption text-text-2">{r.symptoms.map((s) => SYMPTOM_LABEL[s] ?? s).join(", ")}</span>}
                       {r.errorCode && <span className="block text-caption text-text-2">Error code {r.errorCode}</span>}
+                      {damageSummary(r) && <span className="block text-caption font-semibold text-broken-fg">{damageSummary(r)}</span>}
+                      {loadSummary(r) && <span className="block text-caption text-text-2">{loadSummary(r)}</span>}
+                      {hasPhoto ? (
+                        <a href={`/api/photos/${r.id}`} target="_blank" rel="noopener noreferrer" className="mt-1 block w-fit" aria-label="Open load photo">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- small DB-served JPEG, no optimizer needed */}
+                          <img src={`/api/photos/${r.id}`} alt="Load photo" loading="lazy" className="h-16 w-16 rounded-[8px] border border-border object-cover" />
+                        </a>
+                      ) : null}
                       <span className="mt-0.5 flex gap-1">
                         {r.hiddenAt && <Pill tone="caution">Hidden</Pill>}
                         {r.undoneAt && <Pill>Undone</Pill>}

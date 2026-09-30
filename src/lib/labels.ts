@@ -11,7 +11,7 @@ export const WASHER_SETTINGS = ["cold", "warm", "hot"] as const;
 export type WasherSetting = (typeof WASHER_SETTINGS)[number];
 
 export const DRYER_OUTCOMES = ["dry", "damp", "wet", "too_hot", "damaged", "not_working"] as const;
-export const WASHER_OUTCOMES = ["good", "soaking", "dirty", "not_working"] as const;
+export const WASHER_OUTCOMES = ["good", "soaking", "dirty", "damaged", "not_working"] as const;
 export type DryerOutcome = (typeof DRYER_OUTCOMES)[number];
 export type WasherOutcome = (typeof WASHER_OUTCOMES)[number];
 export type Outcome = DryerOutcome | WasherOutcome;
@@ -79,6 +79,21 @@ export const FABRIC_LABEL: Record<string, string> = {
   prints: "Graphic tees",
 };
 
+/** How clothes were damaged, picked on a "Damaged clothes" report (PLAN.md §5). */
+export const DAMAGE_KINDS = ["melted", "shrunk", "lost_stretch", "print_cracked", "scorched", "felted", "color_bled", "torn"] as const;
+export type DamageKind = (typeof DAMAGE_KINDS)[number];
+
+export const DAMAGE_LABEL: Record<string, string> = {
+  melted: "Melted or shiny",
+  shrunk: "Shrunk",
+  lost_stretch: "Lost stretch",
+  print_cracked: "Print cracked",
+  scorched: "Scorched or yellowed",
+  felted: "Felted or pilled",
+  color_bled: "Colors bled",
+  torn: "Torn or snagged",
+};
+
 /** Lower-case form for use mid-sentence ("Use Low for athletic wear"). */
 export const FABRIC_NOUN: Record<string, string> = {
   everyday: "everyday clothes",
@@ -139,8 +154,22 @@ export const LOAD_SIZE_LABEL: Record<string, string> = {
   small: "Small",
   medium: "Medium",
   full: "Full",
-  overstuffed: "Overstuffed",
+  overstuffed: "Packed",
 };
+
+/** "Full load · Athletic / stretch", or null. Shared by the public report list and the admin. */
+export function loadSummary(r: { loadSize: string | null; fabrics: string[] | null }): string | null {
+  const bits = [r.loadSize ? `${LOAD_SIZE_LABEL[r.loadSize] ?? r.loadSize} load` : null, ...(r.fabrics ?? []).map((f) => FABRIC_LABEL[f] ?? f)];
+  return bits.filter(Boolean).join(" · ") || null;
+}
+
+/** "Damaged: Athletic / stretch (Melted or shiny, Lost stretch)", or null. */
+export function damageSummary(r: { damagedItems: string[] | null; damageKinds: string[] | null }): string | null {
+  const items = (r.damagedItems ?? []).map((f) => FABRIC_LABEL[f] ?? f).join(", ");
+  const kinds = (r.damageKinds ?? []).map((k) => DAMAGE_LABEL[k] ?? k).join(", ");
+  if (!items && !kinds) return null;
+  return `Damaged: ${items || "clothes"}${kinds ? ` (${kinds})` : ""}`;
+}
 
 export function outcomesFor(kind: MachineKind): readonly Outcome[] {
   return kind === "dryer" ? DRYER_OUTCOMES : WASHER_OUTCOMES;

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const buildings = sqliteTable("buildings", {
   id: text("id").primaryKey(),
@@ -65,6 +65,9 @@ export const reports = sqliteTable(
     loadSize: text("load_size"),
     /** What was in the load (FABRICS in labels.ts), when the reporter said. Recorded for learning per-fabric settings later. */
     fabrics: text("fabrics", { mode: "json" }).$type<string[] | null>(),
+    /** On a "damaged" report: which kinds of clothing (FABRICS) and how (DAMAGE_KINDS). */
+    damagedItems: text("damaged_items", { mode: "json" }).$type<string[] | null>(),
+    damageKinds: text("damage_kinds", { mode: "json" }).$type<string[] | null>(),
     note: text("note"),
     deviceHash: text("device_hash").notNull(),
     ipHash: text("ip_hash").notNull(),
@@ -102,6 +105,16 @@ export const machineRuns = sqliteTable(
     index("machine_runs_ip_time").on(t.ipHash, t.startedAt),
   ],
 );
+
+/** Optional photo of the load, attached to a report. Downscaled JPEG (EXIF stripped) kept in the DB so it works with no file storage. */
+export const reportPhotos = sqliteTable("report_photos", {
+  reportId: text("report_id")
+    .primaryKey()
+    .references(() => reports.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  bytes: blob("bytes", { mode: "buffer" }).notNull(),
+  createdAt: integer("created_at").notNull(),
+});
 
 /** Failed admin logins by salted IP hash, for brute-force throttling that works across serverless instances. */
 export const loginFailures = sqliteTable(
