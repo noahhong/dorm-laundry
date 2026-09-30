@@ -50,7 +50,7 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
   const dryers = data.machines.filter((m) => m.kind === "dryer");
   const washers = data.machines.filter((m) => m.kind === "washer");
   const empty = data.totalReports === 0;
-  const helper = assistantConfigured() && (await getConfig()).assistantEnabled && data.machines.length > 0;
+  const helper = (await assistantConfigured()) && (await getConfig()).assistantEnabled && data.machines.length > 0;
 
   return (
     <Page>
