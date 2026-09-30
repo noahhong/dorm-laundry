@@ -21,6 +21,8 @@ const LABELS: Record<string, string> = {
   "report.bulk_unhide": "Unhid several reports",
   "settings.update": "Changed settings",
   "settings.reset": "Reset settings to defaults",
+  "assistant.key.save": "Saved the laundry helper API key",
+  "assistant.key.remove": "Removed the laundry helper API key",
 };
 
 export const describeAudit = (action: string) => LABELS[action] ?? action;

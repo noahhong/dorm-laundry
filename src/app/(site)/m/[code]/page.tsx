@@ -235,7 +235,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
       )}
 
       {/* AI helper: clothes → machine and setting (PLAN.md §6.8) */}
-      {!data.retired && assistantConfigured() && data.config.assistantEnabled && <LaundryHelper roomId={room.id} machineCode={machine.code} />}
+      {!data.retired && (await assistantConfigured()) && data.config.assistantEnabled && <LaundryHelper roomId={room.id} machineCode={machine.code} />}
 
       {/* Recent reports */}
       <section aria-labelledby="recent" className="animate-fade-up mt-4 rounded-[var(--radius-lg)] border border-border bg-surface px-5 py-4 shadow-e1" style={{ ["--i" as string]: 2 }}>

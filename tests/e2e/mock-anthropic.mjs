@@ -17,7 +17,16 @@ const message = (content, stop_reason) => ({
 });
 
 createServer((req, res) => {
-  if (req.method === "GET") return res.end("ok");
+  res.setHeader("content-type", "application/json");
+  // Keys containing "bad" are rejected, like a revoked key.
+  if (String(req.headers["x-api-key"] ?? "").includes("bad")) {
+    res.statusCode = 401;
+    return res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }));
+  }
+  if (req.method === "GET") {
+    const id = req.url?.match(/^\/v1\/models\/(.+)$/)?.[1];
+    return res.end(JSON.stringify(id ? { type: "model", id, display_name: id, created_at: "2026-01-01T00:00:00Z" } : { ok: true }));
+  }
   let raw = "";
   req.on("data", (c) => (raw += c));
   req.on("end", () => {
@@ -34,7 +43,6 @@ createServer((req, res) => {
         ? message([{ type: "tool_use", id: "toolu_1", name: "plan_load", input: { fabrics, size: "unknown", thickness: q.includes("thick") ? "thick" : "unknown" } }], "tool_use")
         : message([{ type: "text", text: "What's in the load?" }], "end_turn");
     }
-    res.setHeader("content-type", "application/json");
     res.end(JSON.stringify(out));
   });
 }).listen(PORT);

@@ -1,4 +1,5 @@
 import "server-only";
+import { notLike } from "drizzle-orm";
 import { cache } from "react";
 import { getDb } from "./db";
 import { settings } from "./db/schema";
@@ -34,6 +35,7 @@ export async function saveConfig(next: Config, previous: Config) {
 
 export async function resetConfig() {
   const db = getDb();
-  await db.delete(settings);
+  // Rules only: saved secrets such as the laundry helper's API key (src/lib/api-key.ts) survive a reset.
+  await db.delete(settings).where(notLike(settings.key, "secret.%"));
   await audit("settings.reset", null, null);
 }

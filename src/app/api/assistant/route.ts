@@ -27,7 +27,7 @@ const fail = (status: number, error: string) => Response.json({ error }, { statu
 
 export async function POST(req: Request) {
   const config = await getConfig();
-  if (!assistantConfigured() || !config.assistantEnabled) return fail(404, "The laundry helper is turned off.");
+  if (!(await assistantConfigured()) || !config.assistantEnabled) return fail(404, "The laundry helper is turned off.");
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "Something about that message didn't look right.");
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     return Response.json(answer, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) return fail(503, "The helper is busy. Try again in a minute.");
-    if (err instanceof Anthropic.AuthenticationError) console.error("laundry helper: ANTHROPIC_API_KEY was rejected");
+    if (err instanceof Anthropic.AuthenticationError) console.error("laundry helper: the Anthropic API key was rejected; check Settings → Laundry helper chat");
     else console.error("laundry helper failed", err);
     return fail(502, "The helper couldn't answer just now. Try again in a minute.");
   }

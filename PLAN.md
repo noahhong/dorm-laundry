@@ -229,7 +229,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - ✅ **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring. Pre-fills the room's minutes per payment (dryers) or a site-wide default; the newest tap wins; reporting how it went, or "Stop timer", ends your own. Stored in `machine_runs`; logic is `currentRun` in `src/lib/status.ts`.
 - ✅ **Notify me** when a broken machine is marked fixed (Web Push via PWA, §17).
 - ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7), with thickness, learning from residents' recorded loads per fabric and thickness.
-- ✅ **Laundry helper chat**: describe the clothes in your own words, get the machine and setting (§6.8). Only on when the server has an `ANTHROPIC_API_KEY`.
+- ✅ **Laundry helper chat**: describe the clothes in your own words, get the machine and setting (§6.8). Only on once an admin saves an Anthropic API key in Settings (or `ANTHROPIC_API_KEY` is set).
 - ✅ Room-level fallback recommendation (§6.4).
 - ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
 - ✅ PWA manifest + add-to-home-screen. Still to do: favorite room.
@@ -505,6 +505,7 @@ So every setting the helper names comes from the admin's fabric limits and this 
 
 - **Model**: Claude Opus 5.5 at low effort (short chat answers); `ANTHROPIC_MODEL=claude-sonnet-5-5` halves the cost. If a safety filter declines, the API's default fallback model retries.
 - **Stateless**: the browser sends the last 12 turns (600 characters each) with every question; nothing is stored.
+- **API key**: pasted in Admin → Settings → "Laundry helper API key". It's checked with Anthropic before saving (a free model lookup, no tokens), stored AES-GCM-encrypted with a key derived from `SESSION_SECRET` in the `settings` table under `secret.anthropicApiKey`, and never sent back to the browser (the page shows only its last four characters). "Test key" re-checks it; "Remove key" hides the helper again. "Reset everything to defaults" keeps it. `ANTHROPIC_API_KEY` in the environment wins when set. Rotating `SESSION_SECRET` makes a saved key unreadable, so it has to be saved again (`src/lib/api-key.ts`, `src/lib/secret-box.ts`).
 - **Limits** (Settings → Laundry helper chat): on/off, questions per network per hour (default 20), questions per day for the whole site (default 1,000). Counted in memory per server process, so a restart resets them.
 - Code: `src/lib/assistant.ts` (prompt, tool, ranking; pure, unit-tested), `src/lib/assistant-server.ts` (the Claude call), `POST /api/assistant`, `src/components/laundry-helper.tsx`. E2E runs against a local stand-in for the API (`tests/e2e/mock-anthropic.mjs`).
 
@@ -995,7 +996,7 @@ Nothing the owner might want to change is hard-coded any more.
 | Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost, "Same here" / "Not for me" weights and cap (§6.9) |
 | Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
 | Load advice | on/off; learning on/off, loads needed, share that must agree; per fabric: hottest dryer setting and hottest wash water (§6.7) |
-| Laundry helper chat | on/off, questions per network per hour, questions per day site-wide (§6.8) |
+| Laundry helper chat | the Anthropic API key (write-only, encrypted); on/off, questions per network per hour, questions per day site-wide (§6.8) |
 | Weak-dryer detection | on/off, reports needed, damp share, sibling damp share, gap |
 | "I started it" timer | default washer and dryer cycle length, how long "should be done" shows after the estimate; busy hours on/off, look-back, taps needed (§6.10) |
 | Abuse | per-machine cooldown, reports per device/day, per network/day, minimum fill time, undo window |

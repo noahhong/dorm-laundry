@@ -28,7 +28,7 @@ export const GROUPS = [
   { id: "status", title: "Machine status", blurb: "How reports turn into Works / Caution / Broken." },
   { id: "settings", title: "Dryer settings", blurb: "How reports turn into a recommended dryer setting." },
   { id: "load", title: "Load advice", blurb: "Limits per fabric for “What's in your load?”. A dryer's own learned setting is used unless the load needs something cooler." },
-  { id: "assistant", title: "Laundry helper chat", blurb: "An AI chat on room and machine pages that turns “what I'm washing” into a machine and setting, using the rules above. Only shows when the server has an ANTHROPIC_API_KEY." },
+  { id: "assistant", title: "Laundry helper chat", blurb: "An AI chat on room and machine pages that turns “what I'm washing” into a machine and setting, using the rules above. Only shows once an Anthropic API key is saved below (or set as ANTHROPIC_API_KEY)." },
   { id: "outliers", title: "Weak-dryer detection", blurb: "Flags a dryer that dries much worse than its room-mates." },
   { id: "timer", title: "“I started it” timer", blurb: "Residents tap “I started it” so others can see when a machine should be free. The same taps build the room's busy hours." },
   { id: "abuse", title: "Reports & abuse limits", blurb: "Rate limits and spam speed bumps for anonymous reports." },

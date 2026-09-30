@@ -13,6 +13,8 @@ import { parseSettingsForm, type FormErrors } from "@/lib/config";
 import { getConfig, resetConfig, saveConfig } from "@/lib/config-server";
 import { ipHash } from "@/lib/device";
 import { machineCode, randomId, slugify } from "@/lib/ids";
+import { clearAnthropicKey, getAnthropicKey, looksLikeAnthropicKey, saveAnthropicKey } from "@/lib/api-key";
+import { testAnthropicKey } from "@/lib/assistant-server";
 import { notifyIfFixed } from "@/lib/push";
 import { settingsToStore } from "@/lib/rooms";
 
@@ -262,6 +264,33 @@ export async function resetSettings(): Promise<FormState> {
   await resetConfig();
   refresh();
   return { ok: "Everything is back to the defaults." };
+}
+
+/** Laundry helper API key: checked with Anthropic before saving, stored encrypted, never sent back to the browser. */
+export async function saveApiKey(_: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const key = str(fd, "apiKey");
+  if (!looksLikeAnthropicKey(key)) return { error: "That doesn't look like an Anthropic API key. It starts with sk-ant-." };
+  const problem = await testAnthropicKey(key);
+  if (problem) return { error: `${problem} Nothing was saved.` };
+  await saveAnthropicKey(key);
+  refresh();
+  return { ok: "Key saved and working. The laundry helper is live." };
+}
+
+export async function removeApiKey(): Promise<FormState> {
+  await requireAdmin();
+  await clearAnthropicKey();
+  refresh();
+  return { ok: "Key removed." };
+}
+
+export async function testApiKey(): Promise<FormState> {
+  await requireAdmin();
+  const { key } = await getAnthropicKey();
+  if (!key) return { error: "No key to test yet." };
+  const problem = await testAnthropicKey(key);
+  return problem ? { error: problem } : { ok: "The key works." };
 }
 
 /** Per-row Hide/Unhide on the moderation page: flips whatever the report's current state is. */
