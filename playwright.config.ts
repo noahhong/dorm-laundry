@@ -10,8 +10,8 @@ const env = {
   ADMIN_PASSWORD: "e2e-password",
   SESSION_SECRET: "e2e-session-secret-at-least-32-characters-long",
   PUBLIC_BASE_URL: `http://localhost:${PORT}`,
-  // The laundry helper talks to a local stand-in for the Claude API (tests/e2e/mock-anthropic.mjs).
-  ANTHROPIC_API_KEY: "e2e-mock-key",
+  // The laundry helper talks to a local stand-in for the Claude API (tests/e2e/mock-anthropic.mjs). No
+  // ANTHROPIC_API_KEY here: tests/e2e/assistant.spec.ts saves one through admin Settings first.
   ANTHROPIC_BASE_URL: `http://localhost:${MOCK_PORT}`,
   VAPID_PUBLIC_KEY: vapid.publicKey,
   VAPID_PRIVATE_KEY: vapid.privateKey,

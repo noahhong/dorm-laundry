@@ -1,18 +1,40 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { ASSISTANT_LIMITS, LOAD_TOOL, parseLoadToolInput, planLoad, systemPrompt, type AssistantRoom, type ChatTurn, type LoadPlan } from "./assistant";
+import { getAnthropicKey } from "./api-key";
 import type { FabricRules } from "./load-advice";
 
 /** Claude Opus 5.5 by default; set ANTHROPIC_MODEL (e.g. claude-sonnet-5-5) to trade some quality for cost. */
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 
-/** The chat only exists when the server has credentials for it. */
-export function assistantConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+/** The chat only exists when there is an API key, from the environment or saved in admin Settings. */
+export async function assistantConfigured(): Promise<boolean> {
+  return (await getAnthropicKey()).key !== null;
 }
 
-let client: Anthropic | null = null;
-const getClient = () => (client ??= new Anthropic({ timeout: 45_000, maxRetries: 1 }));
+// One client per key, so saving a new key in Settings takes effect on the next question.
+let client: { key: string; api: Anthropic } | null = null;
+async function getClient(): Promise<Anthropic> {
+  const { key } = await getAnthropicKey();
+  if (!key) throw new Error("No Anthropic API key");
+  if (client?.key !== key) client = { key, api: new Anthropic({ apiKey: key, timeout: 45_000, maxRetries: 1 }) };
+  return client.api;
+}
+
+/** Check a key works by looking up the helper's model: no tokens used. Returns an error message, or null if fine. */
+export async function testAnthropicKey(key: string): Promise<string | null> {
+  try {
+    await new Anthropic({ apiKey: key, timeout: 15_000, maxRetries: 0 }).models.retrieve(MODEL);
+    return null;
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) return "Anthropic rejected this key.";
+    if (err instanceof Anthropic.PermissionDeniedError) return "This key can't use the helper's model.";
+    if (err instanceof Anthropic.NotFoundError) return `The model ${MODEL} wasn't found for this key.`;
+    if (err instanceof Anthropic.APIConnectionError) return "Couldn't reach Anthropic from the server.";
+    if (err instanceof Anthropic.APIError) return `Anthropic returned an error (${err.status ?? "unknown"}).`;
+    return "Couldn't check the key.";
+  }
+}
 
 export interface AssistantAnswer {
   reply: string;
@@ -32,7 +54,7 @@ export async function askAssistant(room: AssistantRoom, rules: FabricRules, site
   let plan: LoadPlan | null = null;
 
   for (let round = 0; round <= ASSISTANT_LIMITS.maxToolRounds; round++) {
-    const response = await getClient().beta.messages.create({
+    const response = await (await getClient()).beta.messages.create({
       model: MODEL,
       max_tokens: 4000,
       // Short chat answers: low effort keeps it quick and cheap.
