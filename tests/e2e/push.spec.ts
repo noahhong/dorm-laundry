@@ -3,6 +3,10 @@ import { expect, test } from "@playwright/test";
 // Headless Chromium can't reach a real push service, so the browser's PushManager is faked with an FCM-shaped
 // subscription. Everything else is real: the service worker, the permission prompt, the server actions and DB.
 // (The server then logs "web push failed: Public key is not valid" for the fake key; that is expected.)
+// Playwright's default headless shell has no Push API (the card would hide itself), so use full Chromium in
+// new-headless mode for this file.
+test.use({ channel: "chromium" });
+
 test.beforeEach(async ({ context }) => {
   await context.grantPermissions(["notifications"]);
   await context.addInitScript(() => {
