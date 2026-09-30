@@ -1,8 +1,12 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { buildings, machines, reports, rooms, type Machine, type Report } from "./db/schema";
-import { applyRoomFallback, computeStatus, detectWeakDryers, recommendSetting, WINDOW, type MachineStatus, type Recommendation, type WeakDryer } from "./status";
+import { buildings, machines, reports, rooms, type Machine, type Report, type Room } from "./db/schema";
+import { getConfig } from "./config-server";
+import { toParams, type Config } from "./config";
+import type { DryerSetting } from "./labels";
+import { offeredSettings } from "./rooms";
+import { applyRoomFallback, computeStatus, detectWeakDryers, recommendSetting, type MachineStatus, type Params, type Recommendation, type WeakDryer } from "./status";
 
 export interface MachineView {
   id: string;
@@ -18,7 +22,7 @@ export interface MachineView {
   weak: WeakDryer | null;
 }
 
-function toView(m: Machine, rs: Report[], now: number): MachineView {
+function toView(m: Machine, rs: Report[], now: number, params: Params, offered: DryerSetting[]): MachineView {
   const input = rs.filter((r) => !r.hiddenAt);
   return {
     id: m.id,
@@ -28,18 +32,18 @@ function toView(m: Machine, rs: Report[], now: number): MachineView {
     washMachineNumber: m.washMachineNumber,
     adminState: m.adminState ?? null,
     adminNote: m.adminNote,
-    status: computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, input, now),
-    recommendation: m.kind === "dryer" ? recommendSetting(input, now) : null,
+    status: computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, input, now, params),
+    recommendation: m.kind === "dryer" ? recommendSetting(input, now, params, offered) : null,
     weak: null,
   };
 }
 
-async function reportsFor(machineIds: string[], now: number) {
+async function reportsFor(machineIds: string[], now: number, windowMs: number) {
   if (machineIds.length === 0) return new Map<string, Report[]>();
   const rows = await getDb()
     .select()
     .from(reports)
-    .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, now - WINDOW), isNull(reports.hiddenAt), isNull(reports.undoneAt)));
+    .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, now - windowMs), isNull(reports.hiddenAt), isNull(reports.undoneAt)));
   const byMachine = new Map<string, Report[]>();
   for (const r of rows) {
     const list = byMachine.get(r.machineId) ?? [];
@@ -58,7 +62,11 @@ export async function listBuildingsWithRooms() {
   return bs.map((b) => ({ ...b, rooms: rs.filter((r) => r.buildingId === b.id) }));
 }
 
-async function machinesForRoom(roomId: string, now: number, { includeRetired = false } = {}) {
+export async function machinesForRoom(room: Room, now: number, { includeRetired = false } = {}, config?: Config) {
+  const cfg = config ?? (await getConfig());
+  const params = toParams(cfg);
+  const offered = offeredSettings(room.dryerSettings);
+  const roomId = room.id;
   const ms = await getDb()
     .select()
     .from(machines)
@@ -67,8 +75,9 @@ async function machinesForRoom(roomId: string, now: number, { includeRetired = f
   const rs = await reportsFor(
     ms.map((m) => m.id),
     now,
+    params.windowMs,
   );
-  const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now), retiredAt: m.retiredAt, position: m.position }));
+  const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now, params, offered), retiredAt: m.retiredAt, position: m.position }));
   const resetAt = new Map(ms.map((m) => [m.id, m.statusResetAt ?? 0]));
   // Broken dryers are already flagged, and their wet loads would skew the room's baseline, so they sit this out.
   const weak = detectWeakDryers(
@@ -77,8 +86,10 @@ async function machinesForRoom(roomId: string, now: number, { includeRetired = f
       // "Mark fixed" means earlier damp loads no longer count against the machine.
       .map((v) => ({ id: v.id, reports: (rs.get(v.id) ?? []).filter((r) => !r.hiddenAt && r.createdAt >= (resetAt.get(v.id) ?? 0)) })),
     now,
+    params,
   );
-  return withRoomFallback(views.map((v) => ({ ...v, weak: weak.get(v.id) ?? null })));
+  const withWeak = views.map((v) => ({ ...v, weak: weak.get(v.id) ?? null }));
+  return cfg.roomFallbackEnabled ? withRoomFallback(withWeak) : withWeak;
 }
 
 /** Dryers with no setting data borrow the room's consensus (retired machines don't vote). */
@@ -98,7 +109,7 @@ export async function getRoom(buildingSlug: string, roomSlug: string, now = Date
     .where(and(eq(buildings.slug, buildingSlug), eq(rooms.slug, roomSlug)))
     .limit(1);
   if (!row) return null;
-  const ms = await machinesForRoom(row.room.id, now);
+  const ms = await machinesForRoom(row.room, now);
   const totalReports = ms.reduce((n, m) => n + m.status.reporters, 0);
   return { ...row, machines: ms, totalReports, now };
 }
@@ -112,7 +123,7 @@ export async function getRoomById(roomId: string, now = Date.now(), opts: { incl
     .where(eq(rooms.id, roomId))
     .limit(1);
   if (!row) return null;
-  return { ...row, machines: await machinesForRoom(row.room.id, now, opts), now };
+  return { ...row, machines: await machinesForRoom(row.room, now, opts), offered: offeredSettings(row.room.dryerSettings), now };
 }
 
 export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "setting" | "symptoms" | "errorCode" | "minutes" | "loadSize" | "note">;
@@ -127,11 +138,14 @@ export async function getMachine(code: string, now = Date.now()) {
     .where(eq(machines.code, code))
     .limit(1);
   if (!row) return null;
-  const rs = (await reportsFor([row.machine.id], now)).get(row.machine.id) ?? [];
-  let view = toView(row.machine, rs, now);
+  const config = await getConfig();
+  const params = toParams(config);
+  const offered = offeredSettings(row.room.dryerSettings);
+  const rs = (await reportsFor([row.machine.id], now, params.windowMs)).get(row.machine.id) ?? [];
+  let view = toView(row.machine, rs, now, params, offered);
   if (view.kind === "dryer") {
     // Room context (sibling fallback and outlier detection) only applies to dryers.
-    const inRoom = (await machinesForRoom(row.room.id, now, { includeRetired: true })).find((m) => m.id === view.id);
+    const inRoom = (await machinesForRoom(row.room, now, { includeRetired: true }, config)).find((m) => m.id === view.id);
     if (inRoom) view = { ...view, recommendation: inRoom.recommendation, weak: inRoom.weak };
   }
   const recent: PublicReport[] = [...rs]
@@ -146,9 +160,10 @@ export async function getMachine(code: string, now = Date.now()) {
       errorCode,
       minutes,
       loadSize,
-      note,
+      // Admins can keep residents' free text private (Settings → "Show report notes publicly").
+      note: config.notesPublic ? note : null,
     }));
-  return { ...row, view, recent, retired: row.machine.retiredAt != null, now };
+  return { ...row, view, recent, retired: row.machine.retiredAt != null, offered, config, now };
 }
 
 export async function recentReportsForRoom(roomId: string, limit = 40) {

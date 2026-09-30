@@ -19,6 +19,10 @@ export const rooms = sqliteTable(
     name: text("name").notNull(),
     locationHint: text("location_hint"),
     washLocationCode: text("wash_location_code"),
+    /** Dryer settings this room's dryers actually have (subset of the heat ladder). null = all five. */
+    dryerSettings: text("dryer_settings", { mode: "json" }).$type<string[] | null>(),
+    /** Minutes one payment buys on a dryer here, shown as a hint. */
+    minutesPerCycle: integer("minutes_per_cycle"),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [uniqueIndex("rooms_building_slug").on(t.buildingId, t.slug)],
@@ -83,6 +87,26 @@ export const loginFailures = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (t) => [index("login_failures_ip_time").on(t.ipHash, t.createdAt)],
+);
+
+/** Admin-editable configuration, one row per key (see src/lib/config.ts). Missing rows mean "use the default". */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).notNull().$type<unknown>(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** Who changed what and when, for everything an admin does. */
+export const auditLog = sqliteTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    at: integer("at").notNull(),
+    action: text("action").notNull(),
+    target: text("target"),
+    detail: text("detail", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  },
+  (t) => [index("audit_log_at").on(t.at)],
 );
 
 export type Building = typeof buildings.$inferSelect;

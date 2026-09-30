@@ -32,9 +32,14 @@ export const reportSchema = z.object({
 export type ReportPayload = z.input<typeof reportSchema>;
 
 /** Kind-specific enum checks the generic schema can't express. Returns an error message or null. */
-export function checkForKind(kind: "washer" | "dryer", p: z.output<typeof reportSchema>): string | null {
+export function checkForKind(
+  kind: "washer" | "dryer",
+  p: z.output<typeof reportSchema>,
+  /** The dryer settings this room actually has (admin-configured). */
+  offeredDryerSettings: readonly string[] = DRYER_SETTINGS,
+): string | null {
   const outcomes: readonly string[] = kind === "dryer" ? DRYER_OUTCOMES : WASHER_OUTCOMES;
-  const settings: readonly string[] = kind === "dryer" ? DRYER_SETTINGS : WASHER_SETTINGS;
+  const settings: readonly string[] = kind === "dryer" ? offeredDryerSettings : WASHER_SETTINGS;
   const symptoms: readonly string[] = kind === "dryer" ? DRYER_SYMPTOMS : WASHER_SYMPTOMS;
   if (!outcomes.includes(p.outcome)) return "Pick how it went.";
   if (p.setting && !settings.includes(p.setting)) return "Unknown setting.";

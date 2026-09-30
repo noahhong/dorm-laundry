@@ -35,9 +35,21 @@ npm run dev                       # http://localhost:3000
 - `/` redirects to the only room, `/b/hedrick-summit/laundry`.
 - Machine pages are at `/m/<code>`. The seed uses readable codes: `hsd1`–`hsd6` for dryers and `hsw1`–`hsw4` for washers. Try `/m/hsd2?r=1` to see what a QR scan opens.
 - Students can add the site to their home screen (it's a PWA), and switch light/dark/auto with the header toggle.
-- Admin is at `/admin`, using the password from `ADMIN_PASSWORD`. From there you can add buildings, rooms and machines, mark machines out of order or fixed, hide reports, and **print QR sheets**.
+- Admin is at `/admin`, using the password from `ADMIN_PASSWORD` (see below).
 
 To reset the demo data, run `npm run db:seed -- --reset`.
+
+## The admin panel (`/admin`)
+
+| Page | What you can do |
+|---|---|
+| **Dashboard** | Reports today / this week with trends, a 14-day chart, top problems, every machine that needs attention (broken, doubtful, weak, never reported), a per-room overview, and the rules currently in effect |
+| **Rooms & machines** | Add, rename and delete buildings and rooms. Per room: which **dryer settings those dryers actually have** (residents can only report, and get recommended, what you tick), minutes per payment, WASH room code. Add machines in bulk, edit, mark out of order / fixed, retire, and **print QR sticker sheets** |
+| **Reports** | Search and filter every report (room, kind, outcome, visible/hidden/undone, period), hide or unhide one or many, and **download a CSV** |
+| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
+| **Activity log** | Who-did-what record of every admin action, including before → after for each setting |
+
+Settings are stored in the database, not in code, so they survive deploys and apply to the public pages immediately. Secrets (admin password, bot-check keys) stay in environment variables.
 
 ## Scripts
 
@@ -52,6 +64,7 @@ To reset the demo data, run `npm run db:seed -- --reset`.
 | `npm run db:generate` | Creates a new SQL migration after you edit `src/lib/db/schema.ts` |
 | `npm run db:migrate` | Applies migrations to `DATABASE_URL` |
 | `npm run db:seed` | Seeds the demo building (add `-- --reset` to recreate it) |
+| `npm run preflight` | Checks your production env vars and that the database is reachable and migrated. Run it before and after deploying |
 
 ## Environment
 
@@ -86,7 +99,8 @@ To reset the demo data, run `npm run db:seed -- --reset`.
    - In Project → Settings → Functions, pick the region closest to your Turso database (e.g. `sfo1` for `lax`).
 4. **Custom domain** (optional). Set `PUBLIC_BASE_URL` to it **before** printing QR codes, so stickers never point at a preview URL.
 5. (Optional) If spam shows up, create a free Turnstile widget in the Cloudflare dashboard for your domain and set both `TURNSTILE_*` variables.
-6. Open `/admin` and add rooms and machines. Label machines to match their physical numbers. Then open **Print QR sheet**, print at 100% on US Letter, cut, and stick one near each machine's controls.
+6. Run `npm run preflight` with the same variables to confirm everything is set, then check `https://your-domain/api/health` returns `{"ok":true}` after the deploy.
+7. Open `/admin`, then **Settings** to set your site name and rules, and **Rooms & machines** to add your rooms and tick the dryer settings they have. Label machines to match their physical numbers. Then open **Print QR sheet**, print at 100% on US Letter, cut, and stick one near each machine's controls.
 
 Vercel Hobby is for non-commercial use only. If a club or department officially sponsors the project, the same code can run on Cloudflare Workers through [OpenNext](https://opennext.js.org/cloudflare) (see PLAN.md §8).
 
@@ -108,7 +122,9 @@ scripts/                 migrate and seed
 tests/                   Vitest unit tests and Playwright e2e
 ```
 
-## JSON API (read-only)
+## Health and JSON API
+
+- `GET /api/health`: `{"ok":true}` when the database is up and migrated (503 otherwise), for uptime monitors.
 
 - `GET /api/rooms/:roomId`: the room's machines, each with status and recommendation
 - `GET /api/machines/:code`: one machine with its status, recommendation and recent reports

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Page } from "@/components/chrome";
-import { StatefulForm, SubmitButton } from "@/components/admin-ui";
+import { StatefulForm, SubmitButton } from "@/components/admin/forms";
 import { adminConfigured, isAdmin } from "@/lib/admin-auth";
 import { login } from "../actions";
 import { card, input, label } from "../styles";

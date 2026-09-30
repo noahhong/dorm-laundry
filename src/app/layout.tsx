@@ -1,13 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { AppHeader } from "@/components/chrome";
+import { getConfig } from "@/lib/config-server";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: { default: "Dorm Laundry", template: "%s · Dorm Laundry" },
-  description: "Which laundry machines work, and the dryer setting that won't wreck your clothes. Crowdsourced by residents.",
-  applicationName: "Dorm Laundry",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName, tagline } = await getConfig();
+  return {
+    title: { default: siteName, template: `%s · ${siteName}` },
+    description: `${tagline} Crowdsourced by residents.`,
+    applicationName: siteName,
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -26,7 +29,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col font-sans text-body">
-        <AppHeader />
         {children}
       </body>
     </html>

@@ -64,6 +64,30 @@ export const H_STATUS = 72 * HOUR;
 export const H_SETTING = 21 * DAY;
 export const WINDOW = 60 * DAY;
 
+/** Every tunable of the algorithm. The admin panel edits these (see src/lib/config.ts); defaults match PLAN.md §6. */
+export interface Params {
+  /** Reports older than this are ignored entirely. */
+  windowMs: number;
+  /** Half-life of evidence about whether a machine works. */
+  statusHalfLifeMs: number;
+  /** Half-life of evidence about which dryer setting works. */
+  settingHalfLifeMs: number;
+  /** Extra weight on the single newest report (tiebreak: a later "works" beats an earlier "broken"). */
+  newestBoost: number;
+  /** Distinct devices that must say "broken" before the machine shows Broken (otherwise: Caution, unconfirmed). */
+  brokenMinReporters: number;
+  outlier: { enabled: boolean; minReports: number; rate: number; siblingRate: number; gap: number };
+}
+
+export const DEFAULT_PARAMS: Params = {
+  windowMs: WINDOW,
+  statusHalfLifeMs: H_STATUS,
+  settingHalfLifeMs: H_SETTING,
+  newestBoost: 1.5,
+  brokenMinReporters: 1,
+  outlier: { enabled: true, minReports: 3, rate: 0.45, siblingRate: 0.25, gap: 0.3 },
+};
+
 const decay = (age: number, halfLife: number) => Math.pow(0.5, Math.max(0, age) / halfLife);
 
 type Evidence = { broken: number; caution: number; ok: number; reason: string | null };
@@ -107,6 +131,7 @@ export const REASON_LABEL: Record<string, string> = {
   no_spin: "Doesn't spin",
   dirty: "Doesn't clean well",
   mixed: "Mixed reports",
+  unconfirmed: "Reported broken, not yet confirmed",
   took_money: "Takes money",
   wont_start: "Won't start",
   door_lock: "Door lock error",
@@ -145,8 +170,8 @@ function latestBy<T extends ReportInput>(reports: T[], key: (r: T) => string): T
   return [...m.values()];
 }
 
-export function computeStatus(machine: MachineInput, allReports: ReportInput[], now: number): MachineStatus {
-  const inWindow = allReports.filter((r) => now - r.createdAt <= WINDOW && r.createdAt <= now);
+export function computeStatus(machine: MachineInput, allReports: ReportInput[], now: number, params: Params = DEFAULT_PARAMS): MachineStatus {
+  const inWindow = allReports.filter((r) => now - r.createdAt <= params.windowMs && r.createdAt <= now);
   const lastReportAt = inWindow.reduce<number | null>((a, r) => (a === null || r.createdAt > a ? r.createdAt : a), null);
 
   if (machine.adminState === "out_of_order") {
@@ -169,10 +194,12 @@ export function computeStatus(machine: MachineInput, allReports: ReportInput[], 
   let B = 0,
     C = 0,
     O = 0;
+  let brokenDevices = 0;
   const reasons = new Map<string, { w: number; broken: boolean }>();
   counted.forEach((r, i) => {
-    const w = r.trust * decay(now - r.createdAt, H_STATUS) * (i === 0 ? 1.5 : 1);
+    const w = r.trust * decay(now - r.createdAt, params.statusHalfLifeMs) * (i === 0 ? params.newestBoost : 1);
     const e = statusEvidence(machine.kind, r);
+    if (e.broken > 0) brokenDevices++;
     B += w * e.broken;
     C += w * e.caution;
     O += w * e.ok;
@@ -216,6 +243,8 @@ export function computeStatus(machine: MachineInput, allReports: ReportInput[], 
 
   const confidence = confidenceFor(W);
   if (B >= 0.5 && B / W >= 0.6) {
+    // Some rooms want a second opinion before a machine is written off (set by the admin).
+    if (brokenDevices < params.brokenMinReporters) return { ...base, level: "caution", reason: REASON_LABEL.unconfirmed, confidence: "low" };
     return { ...base, level: "broken", reason: topReason(true), confidence };
   }
   if (B + C >= 0.4 && (B + C) / W >= 0.3) {
@@ -245,11 +274,28 @@ export function settingEvidence(outcome: string): { good: number; under: number;
 
 const DEFAULT_SETTING: DryerSetting = "medium";
 
-export function recommendSetting(allReports: ReportInput[], now: number): Recommendation {
-  const L = DRYER_SETTINGS;
+/** Setting to suggest when there is no data: Medium if the room offers it, else the lower middle of what it offers. */
+export function defaultSetting(offered: readonly DryerSetting[]): DryerSetting {
+  if (offered.includes(DEFAULT_SETTING)) return DEFAULT_SETTING;
+  const ladder = DRYER_SETTINGS.filter((x) => offered.includes(x));
+  return ladder[Math.floor((ladder.length - 1) / 2)] ?? DEFAULT_SETTING;
+}
+
+/**
+ * `offered` is the set of settings this room's dryers actually have (the admin configures it per room);
+ * the ladder, the recommendation and the warnings are all restricted to it.
+ */
+export function recommendSetting(
+  allReports: ReportInput[],
+  now: number,
+  params: Params = DEFAULT_PARAMS,
+  offered: readonly DryerSetting[] = DRYER_SETTINGS,
+): Recommendation {
+  const L: readonly DryerSetting[] = DRYER_SETTINGS.filter((x) => offered.includes(x));
+  const fallback = defaultSetting(L);
   const idx = (s: string) => L.indexOf(s as DryerSetting);
   const usable = allReports.filter(
-    (r) => now - r.createdAt <= WINDOW && r.createdAt <= now && r.setting && idx(r.setting) >= 0 && settingEvidence(r.outcome),
+    (r) => now - r.createdAt <= params.windowMs && r.createdAt <= now && r.setting && idx(r.setting) >= 0 && settingEvidence(r.outcome),
   );
   const counted = latestBy(usable, (r) => `${r.deviceHash}|${r.setting}`);
 
@@ -261,7 +307,7 @@ export function recommendSetting(allReports: ReportInput[], now: number): Recomm
   for (const r of counted) {
     const i = idx(r.setting!);
     const e = settingEvidence(r.outcome)!;
-    const w = r.trust * decay(now - r.createdAt, H_SETTING);
+    const w = r.trust * decay(now - r.createdAt, params.settingHalfLifeMs);
     direct[i].good += w * e.good;
     direct[i].under += w * e.under;
     direct[i].over += w * e.over;
@@ -299,7 +345,7 @@ export function recommendSetting(allReports: ReportInput[], now: number): Recomm
 
   const hasData = n.some((x) => x >= 0.05);
   if (!hasData) {
-    return { setting: DEFAULT_SETTING, basis: "default", confidence: "none", tips: [], avoid: [], ladder };
+    return { setting: fallback, basis: "default", confidence: "none", tips: [], avoid: [], ladder };
   }
 
   // Safety first: among near-equal candidates, the cooler setting wins.
@@ -328,7 +374,7 @@ export function recommendSetting(allReports: ReportInput[], now: number): Recomm
 
   let pick: number;
   if (highestUnder + 1 < lowestOver) {
-    pick = Math.max(highestUnder + 1, Math.min(idx(DEFAULT_SETTING), lowestOver - 1));
+    pick = Math.max(highestUnder + 1, Math.min(idx(fallback), lowestOver - 1));
     if (highestUnder >= 0 && pick === highestUnder + 1 && n[pick] < 0.5) tips.push(`${SETTING_LABEL[L[highestUnder]]} leaves clothes damp`);
   } else {
     pick = Math.max(0, lowestOver - 1);
@@ -365,15 +411,15 @@ export interface WeakDryer {
 
 const UNDER_AT_HEAT: Record<string, number> = { dry: 0, damp: 0.5, wet: 1 };
 
-function dryingTally(reports: ReportInput[], now: number) {
+function dryingTally(reports: ReportInput[], now: number, params: Params) {
   const usable = reports.filter(
-    (r) => (r.setting === "medium" || r.setting === "high") && r.outcome in UNDER_AT_HEAT && now - r.createdAt <= WINDOW && r.createdAt <= now,
+    (r) => (r.setting === "medium" || r.setting === "high") && r.outcome in UNDER_AT_HEAT && now - r.createdAt <= params.windowMs && r.createdAt <= now,
   );
   let n = 0;
   let under = 0;
   const counted = latestBy(usable, (r) => r.deviceHash);
   for (const r of counted) {
-    const w = r.trust * decay(now - r.createdAt, H_SETTING);
+    const w = r.trust * decay(now - r.createdAt, params.settingHalfLifeMs);
     n += w;
     under += w * UNDER_AT_HEAT[r.outcome];
   }
@@ -385,18 +431,24 @@ function dryingTally(reports: ReportInput[], now: number) {
  * i.e. likely a vent, sensor or heater problem worth a WASH service request rather than a setting tweak.
  * Conservative on purpose: needs ≥3 reports on the dryer and ≥4 (decayed) reports from its siblings.
  */
-export function detectWeakDryers(dryers: { id: string; reports: ReportInput[] }[], now: number): Map<string, WeakDryer> {
-  const tallies = dryers.map((d) => ({ id: d.id, ...dryingTally(d.reports, now) }));
+export function detectWeakDryers(
+  dryers: { id: string; reports: ReportInput[] }[],
+  now: number,
+  params: Params = DEFAULT_PARAMS,
+): Map<string, WeakDryer> {
   const out = new Map<string, WeakDryer>();
+  const o = params.outlier;
+  if (!o.enabled) return out;
+  const tallies = dryers.map((d) => ({ id: d.id, ...dryingTally(d.reports, now, params) }));
   for (const t of tallies) {
-    if (t.reports < 3 || t.n <= 0) continue;
+    if (t.reports < o.minReports || t.n <= 0) continue;
     const others = tallies.filter((o) => o.id !== t.id);
     const sn = others.reduce((a, o) => a + o.n, 0);
     const su = others.reduce((a, o) => a + o.under, 0);
     if (others.filter((o) => o.reports > 0).length < 2 || sn < 4) continue;
     const rate = t.under / t.n;
     const siblingRate = su / sn;
-    if (rate >= 0.45 && siblingRate <= 0.25 && rate - siblingRate >= 0.3) out.set(t.id, { rate, siblingRate, reports: t.reports });
+    if (rate >= o.rate && siblingRate <= o.siblingRate && rate - siblingRate >= o.gap) out.set(t.id, { rate, siblingRate, reports: t.reports });
   }
   return out;
 }

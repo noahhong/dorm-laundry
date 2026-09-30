@@ -32,20 +32,23 @@ export async function ipHash(now = Date.now()): Promise<string> {
   return sha256(`ip:${ip}:${day}:${sessionSecret()}`);
 }
 
-export const LIMITS = {
-  perMachineMs: 3 * 60_000,
-  perDevicePerDay: 30,
-  // A whole dorm can share one NAT address, so this is a backstop against scripts, not a per-person limit.
-  perIpPerDay: 300,
-};
+export interface RateLimits {
+  perMachineMs: number;
+  perDevicePerDay: number;
+  perIpPerDay: number;
+}
 
-export async function checkRateLimit(db: DB, { device, ip, machineId, now }: { device: string; ip: string; machineId: string; now: number }): Promise<string | null> {
+export async function checkRateLimit(
+  db: DB,
+  { device, ip, machineId, now }: { device: string; ip: string; machineId: string; now: number },
+  LIMITS: RateLimits,
+): Promise<string | null> {
   const dayAgo = now - 24 * 3600_000;
   const [recentSame] = await db
     .select({ n: count() })
     .from(reports)
     .where(and(eq(reports.deviceHash, device), eq(reports.machineId, machineId), gte(reports.createdAt, now - LIMITS.perMachineMs)));
-  if (recentSame.n > 0) return "You just reported this machine. Give it a few minutes.";
+  if (LIMITS.perMachineMs > 0 && recentSame.n > 0) return "You just reported this machine. Give it a few minutes.";
   const [byDevice] = await db.select({ n: count() }).from(reports).where(and(eq(reports.deviceHash, device), gte(reports.createdAt, dayAgo)));
   if (byDevice.n >= LIMITS.perDevicePerDay) return "That's a lot of reports today. Try again tomorrow.";
   const [byIp] = await db.select({ n: count() }).from(reports).where(and(eq(reports.ipHash, ip), gte(reports.createdAt, dayAgo)));
