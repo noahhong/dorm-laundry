@@ -70,6 +70,7 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
     errorCode: p.errorCode ?? null,
     minutes: p.minutes ?? null,
     loadSize: p.loadSize ?? null,
+    fabrics: p.outcome === "not_working" ? null : (p.fabrics ?? null),
     note: p.note ?? null,
     deviceHash: device,
     ipHash: ip,

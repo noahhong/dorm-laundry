@@ -5,6 +5,8 @@ import { submitReport, undoReport } from "@/app/actions";
 import {
   DRYER_OUTCOMES,
   DRYER_SETTINGS,
+  FABRICS,
+  FABRIC_LABEL,
   LOAD_SIZES,
   LOAD_SIZE_LABEL,
   OUTCOME_LABEL,
@@ -15,6 +17,7 @@ import {
   symptomsFor,
   type MachineKind,
 } from "@/lib/labels";
+import { parseLoad, readLoadRaw, subscribeLoad } from "@/lib/load-store";
 import type { StatusLevel } from "@/lib/status";
 import { CheckIcon, DropIcon, DropletsIcon, FlameIcon, ScissorsIcon, SparkleIcon, StatusIcon, SunIcon, XIcon, ChevronLeft } from "./icons";
 
@@ -169,7 +172,12 @@ function Sheet({
   const [symptoms, setSymptoms] = useState<string[]>([]);
   const [more, setMore] = useState(false);
   const [minutes, setMinutes] = useState("");
-  const [loadSize, setLoadSize] = useState<string | null>(null);
+  // undefined = untouched: use what the resident picked under "What's in your load?" on the machine page.
+  const [loadSizePick, setLoadSize] = useState<string | null | undefined>(undefined);
+  const [fabricsPick, setFabrics] = useState<string[] | undefined>(undefined);
+  const storedLoad = parseLoad(useSyncExternalStore(subscribeLoad, readLoadRaw, () => null));
+  const loadSize = loadSizePick === undefined ? storedLoad.size : loadSizePick;
+  const fabrics: string[] = fabricsPick ?? [...storedLoad.fabrics];
   const [errorCode, setErrorCode] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -244,6 +252,7 @@ function Sheet({
         symptoms,
         minutes: minutes ? Number(minutes) : null,
         loadSize: loadSize as never,
+        fabrics: fabrics.length ? (fabrics as never) : null,
         errorCode: errorCode || null,
         note: note || null,
         website: (panelRef.current?.querySelector<HTMLInputElement>('input[name="website"]')?.value ?? "") || undefined,
@@ -387,7 +396,7 @@ function Sheet({
                   <legend className="mb-2 text-label font-semibold text-text-2">
                     {isDryer ? "Which setting did you use?" : "Water temperature (optional)"}
                   </legend>
-                  <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(0, 1fr))` }}
+                  <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(min-content, 1fr))` }}
                     className="grid gap-1 rounded-[14px] bg-surface-2 p-1">
                     {settings.map((s, i) => (
                       <button
@@ -411,6 +420,12 @@ function Sheet({
                   </div>
                   {lastSetting && isDryer && !setting && (
                     <p className="mt-1.5 text-caption text-text-3">Dot = what you used last time</p>
+                  )}
+                  {!more && (fabrics.length > 0 || loadSize) && (
+                    <p className="mt-1.5 text-caption text-text-3">
+                      Your load ({[loadSize ? `${LOAD_SIZE_LABEL[loadSize]} load` : null, ...fabrics.map((f) => FABRIC_LABEL[f])].filter(Boolean).join(" · ")}) is
+                      included. Change it in More details.
+                    </p>
                   )}
                 </fieldset>
               )}
@@ -458,6 +473,25 @@ function Sheet({
                             {LOAD_SIZE_LABEL[l]}
                           </button>
                         ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-label text-text-2">What was in the load</span>
+                      <div role="group" aria-label="What was in the load" className="mt-1 flex flex-wrap gap-1.5">
+                        {FABRICS.map((f) => {
+                          const on = fabrics.includes(f);
+                          return (
+                            <button
+                              key={f}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => setFabrics(on ? fabrics.filter((x) => x !== f) : [...fabrics, f])}
+                              className={`h-9 rounded-full border px-3 text-caption font-semibold ${on ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface-2 text-text-2"}`}
+                            >
+                              {FABRIC_LABEL[f]}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                     <label className="text-label text-text-2">

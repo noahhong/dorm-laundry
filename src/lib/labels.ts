@@ -63,6 +63,32 @@ export const BROKEN_SYMPTOMS: ReadonlySet<string> = new Set([
 ]);
 
 export const LOAD_SIZES = ["small", "medium", "full", "overstuffed"] as const;
+export type LoadSize = (typeof LOAD_SIZES)[number];
+
+/** What's in the load, for load-based suggestions (PLAN.md §6.7). Admins set each fabric's limits in Settings. */
+export const FABRICS = ["everyday", "towels", "jeans", "athletic", "delicates", "wool", "prints"] as const;
+export type Fabric = (typeof FABRICS)[number];
+
+export const FABRIC_LABEL: Record<string, string> = {
+  everyday: "Everyday cotton",
+  towels: "Towels & bedding",
+  jeans: "Jeans",
+  athletic: "Athletic / stretch",
+  delicates: "Delicates",
+  wool: "Wool & sweaters",
+  prints: "Graphic tees",
+};
+
+/** Lower-case form for use mid-sentence ("Use Low for athletic wear"). */
+export const FABRIC_NOUN: Record<string, string> = {
+  everyday: "everyday clothes",
+  towels: "towels and bedding",
+  jeans: "jeans",
+  athletic: "athletic wear",
+  delicates: "delicates",
+  wool: "wool",
+  prints: "graphic tees",
+};
 
 export const SETTING_LABEL: Record<string, string> = {
   no_heat: "No heat",
