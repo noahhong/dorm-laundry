@@ -19,6 +19,24 @@ test("machine page shows status, recommendation and recent reports", async ({ pa
   await expect(page.getByRole("region", { name: "Recent reports" }).getByText(/Melted the print/)).toBeVisible();
 });
 
+test("a broken dryer's setting is framed as for after the fix", async ({ page }) => {
+  await page.goto("/m/hsd3");
+  await expect(page.getByRole("heading", { name: "Best setting once it's fixed" })).toBeVisible();
+  await expect(page.getByText("Use another dryer until this one is fixed.")).toBeVisible();
+});
+
+test("dryer setting labels fit on a 320px-wide phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/m/hsd5?r=1");
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: /Dry/ }).first().click();
+  const overflow = await sheet
+    .getByRole("radiogroup", { name: "Setting" })
+    .getByRole("radio")
+    .evaluateAll((els) => els.filter((el) => el.scrollWidth > el.clientWidth).map((el) => el.textContent));
+  expect(overflow).toEqual([]);
+});
+
 test("3-tap report from a QR link updates the machine", async ({ page }) => {
   await page.goto("/m/hsd5?r=1");
   const sheet = page.getByRole("dialog");

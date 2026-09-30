@@ -144,8 +144,13 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
       {rec && (
         <section aria-labelledby="best-setting" className="animate-fade-up mt-4 rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-e1" style={{ ["--i" as string]: 1 }}>
           <h2 id="best-setting" className="text-caption uppercase tracking-wide text-text-3">
-            Best setting
+            {s.level === "broken" ? "Best setting once it's fixed" : "Best setting"}
           </h2>
+          {s.level === "broken" && (
+            <p className="mt-2 rounded-[10px] bg-broken-tint px-3 py-2 text-label font-medium text-broken-fg">
+              Use another dryer until this one is fixed.
+            </p>
+          )}
           <div className="mt-1 flex items-center gap-3">
             <span className="grid h-12 w-12 place-items-center rounded-[14px] bg-accent-tint text-accent">
               <ThermometerIcon size={26} />

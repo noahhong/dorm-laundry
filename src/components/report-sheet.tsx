@@ -387,7 +387,7 @@ function Sheet({
                   <legend className="mb-2 text-label font-semibold text-text-2">
                     {isDryer ? "Which setting did you use?" : "Water temperature (optional)"}
                   </legend>
-                  <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(0, 1fr))` }}
+                  <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(min-content, 1fr))` }}
                     className="grid gap-1 rounded-[14px] bg-surface-2 p-1">
                     {settings.map((s, i) => (
                       <button
