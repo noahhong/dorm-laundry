@@ -175,3 +175,19 @@ export async function recentReportsForRoom(roomId: string, limit = 40) {
     .orderBy(desc(reports.createdAt))
     .limit(limit);
 }
+
+/** Just the status of one machine (no room context), for deciding whether it counts as fixed. */
+export async function machineStatusById(machineId: string, now = Date.now()) {
+  const [row] = await getDb()
+    .select({ machine: machines, roomName: rooms.name })
+    .from(machines)
+    .innerJoin(rooms, eq(machines.roomId, rooms.id))
+    .where(eq(machines.id, machineId))
+    .limit(1);
+  if (!row) return null;
+  const params = toParams(await getConfig());
+  const rs = (await reportsFor([machineId], now, params.windowMs)).get(machineId) ?? [];
+  const m = row.machine;
+  const status = computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, rs, now, params);
+  return { machine: m, roomName: row.roomName, status };
+}

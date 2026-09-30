@@ -3,10 +3,13 @@ import { notFound } from "next/navigation";
 import { BackLink, Page } from "@/components/chrome";
 import { HeatLadder, LadderLegend } from "@/components/heat-ladder";
 import { AlertIcon, DryerIcon, ExternalIcon, StatusIcon, ThermometerIcon, WasherIcon } from "@/components/icons";
+import { NotifyFixed } from "@/components/notify-fixed";
 import { ReportSheet } from "@/components/report-sheet";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
 import { isoTime, plural, timeAgo } from "@/lib/format";
 import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
+import { pushPublicKey } from "@/lib/push";
+import { canWatch } from "@/lib/push-rules";
 import { getMachine, type PublicReport } from "@/lib/queries";
 import { turnstileSiteKey } from "@/lib/turnstile";
 import type { StatusLevel } from "@/lib/status";
@@ -63,6 +66,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
   const t = TONE[s.level];
   const rec = view.recommendation;
   const roomHref = `/b/${building.slug}/${room.slug}`;
+  const pushKey = pushPublicKey();
 
   return (
     <Page className="pb-32">
@@ -117,6 +121,8 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
           </div>
         </div>
       </section>
+
+      {pushKey && !data.retired && canWatch(s.level) && <NotifyFixed code={machine.code} label={machine.label} publicKey={pushKey} />}
 
       {/* Outlier: this dryer is much weaker than its room-mates */}
       {view.weak && (

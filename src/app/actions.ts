@@ -1,11 +1,15 @@
 "use server";
 
-import { and, eq, gte, isNull } from "drizzle-orm";
+import { and, count, eq, gte, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { getDb } from "@/lib/db";
-import { buildings, machines, reports, rooms } from "@/lib/db/schema";
+import { buildings, machines, pushSubscriptions, reports, rooms } from "@/lib/db/schema";
 import { getConfig } from "@/lib/config-server";
 import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
+import { notifyIfFixed, pruneExpiredWatches, pushPublicKey, watcherCount } from "@/lib/push";
+import { canWatch, MAX_WATCHERS_PER_MACHINE, MAX_WATCHES_PER_DEVICE, pushSubscriptionSchema } from "@/lib/push-rules";
+import { machineStatusById } from "@/lib/queries";
 import { offeredSettings } from "@/lib/rooms";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
@@ -72,6 +76,8 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
     trust: 1,
   });
   await revalidateMachine(machine.id);
+  // A "works now" report may be the fix people are waiting for; send pushes after the response.
+  if (pushPublicKey()) after(() => notifyIfFixed(machine.id));
   return { ok: true, id };
 }
 
@@ -89,4 +95,65 @@ export async function undoReport(id: string): Promise<ActionResult> {
   if (deleted.length === 0) return { ok: false, error: "Too late to undo that one." };
   await revalidateMachine(deleted[0].machineId);
   return { ok: true, id };
+}
+
+export type WatchResult = { ok: true } | { ok: false; error: string };
+
+async function watchableMachine(code: unknown) {
+  if (typeof code !== "string" || code.length > 32) return null;
+  const [m] = await getDb().select({ id: machines.id }).from(machines).where(eq(machines.code, code)).limit(1);
+  return m ?? null;
+}
+
+/** "Notify me when it's fixed": store this browser's push subscription for one broken machine. */
+export async function watchForFix(code: string, subscription: unknown): Promise<WatchResult> {
+  if (!pushPublicKey()) return { ok: false, error: "Notifications aren't set up on this site." };
+  const parsed = pushSubscriptionSchema.safeParse(subscription);
+  if (!parsed.success) return { ok: false, error: "This browser's notification service isn't supported." };
+  const m = await watchableMachine(code);
+  const info = m && (await machineStatusById(m.id));
+  if (!info || info.machine.retiredAt) return { ok: false, error: "That machine isn't in our list anymore." };
+  if (!canWatch(info.status.level)) return { ok: false, error: "It isn't marked broken right now." };
+
+  const db = getDb();
+  const now = Date.now();
+  await pruneExpiredWatches(now);
+  const device = (await deviceHash({ create: true }))!;
+  const { endpoint, keys } = parsed.data;
+  const [existing] = await db
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(and(eq(pushSubscriptions.machineId, info.machine.id), eq(pushSubscriptions.endpoint, endpoint)));
+  if (existing) {
+    await db.update(pushSubscriptions).set({ p256dh: keys.p256dh, auth: keys.auth }).where(eq(pushSubscriptions.id, existing.id));
+    return { ok: true };
+  }
+  const [{ n: mine }] = await db.select({ n: count() }).from(pushSubscriptions).where(eq(pushSubscriptions.deviceHash, device));
+  if (mine >= MAX_WATCHES_PER_DEVICE) return { ok: false, error: `You're already waiting on ${MAX_WATCHES_PER_DEVICE} machines.` };
+  if ((await watcherCount(info.machine.id)) >= MAX_WATCHERS_PER_MACHINE) return { ok: false, error: "Too many people are waiting on this one. Check back later." };
+  await db
+    .insert(pushSubscriptions)
+    .values({ id: randomId(), machineId: info.machine.id, endpoint, p256dh: keys.p256dh, auth: keys.auth, deviceHash: device, createdAt: now })
+    .onConflictDoNothing();
+  return { ok: true };
+}
+
+/** Cancel a watch. Knowing the (unguessable) endpoint is the proof of ownership. */
+export async function stopWatchingForFix(code: string, endpoint: string): Promise<WatchResult> {
+  const m = await watchableMachine(code);
+  if (m && typeof endpoint === "string") {
+    await getDb().delete(pushSubscriptions).where(and(eq(pushSubscriptions.machineId, m.id), eq(pushSubscriptions.endpoint, endpoint)));
+  }
+  return { ok: true };
+}
+
+/** Is this browser already waiting on this machine? */
+export async function isWatchingForFix(code: string, endpoint: string): Promise<boolean> {
+  const m = await watchableMachine(code);
+  if (!m || typeof endpoint !== "string") return false;
+  const [row] = await getDb()
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(and(eq(pushSubscriptions.machineId, m.id), eq(pushSubscriptions.endpoint, endpoint)));
+  return Boolean(row);
 }

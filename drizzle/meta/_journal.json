@@ -22,6 +22,13 @@
       "when": 1790792507392,
       "tag": "0002_admin_config",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790794348830,
+      "tag": "0003_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }
