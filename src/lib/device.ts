@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
 import { and, count, eq, gte } from "drizzle-orm";
+import { pickClientIp } from "./client-ip";
 import { randomId } from "./ids";
 import { sha256, sessionSecret } from "./secret";
 import type { DB } from "./db";
@@ -22,8 +23,7 @@ export async function deviceHash({ create }: { create: boolean }): Promise<strin
 
 /** Salted per day so hashes can't be joined across days. Never store the raw IP. */
 export async function clientIp(): Promise<string> {
-  const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+  return pickClientIp(await headers());
 }
 
 export async function ipHash(now = Date.now()): Promise<string> {
@@ -35,7 +35,8 @@ export async function ipHash(now = Date.now()): Promise<string> {
 export const LIMITS = {
   perMachineMs: 3 * 60_000,
   perDevicePerDay: 30,
-  perIpPerDay: 60,
+  // A whole dorm can share one NAT address, so this is a backstop against scripts, not a per-person limit.
+  perIpPerDay: 300,
 };
 
 export async function checkRateLimit(db: DB, { device, ip, machineId, now }: { device: string; ip: string; machineId: string; now: number }): Promise<string | null> {

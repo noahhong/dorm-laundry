@@ -64,12 +64,25 @@ export const reports = sqliteTable(
     ipHash: text("ip_hash").notNull(),
     trust: real("trust").notNull().default(1),
     hiddenAt: integer("hidden_at"),
+    /** Set when the reporter undoes it. Kept (not deleted) so undo can't be used to reset rate limits. */
+    undoneAt: integer("undone_at"),
   },
   (t) => [
     index("reports_machine_time").on(t.machineId, t.createdAt),
     index("reports_device_time").on(t.deviceHash, t.createdAt),
     index("reports_ip_time").on(t.ipHash, t.createdAt),
   ],
+);
+
+/** Failed admin logins by salted IP hash, for brute-force throttling that works across serverless instances. */
+export const loginFailures = sqliteTable(
+  "login_failures",
+  {
+    id: text("id").primaryKey(),
+    ipHash: text("ip_hash").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("login_failures_ip_time").on(t.ipHash, t.createdAt)],
 );
 
 export type Building = typeof buildings.$inferSelect;

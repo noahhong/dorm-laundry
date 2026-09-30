@@ -59,8 +59,8 @@ To reset the demo data, run `npm run db:seed -- --reset`.
 |---|---|---|
 | `DATABASE_URL` | yes in prod | `file:local.db` locally; `libsql://…turso.io` in production |
 | `DATABASE_AUTH_TOKEN` | with Turso | Create with `turso db tokens create <db>` |
-| `ADMIN_PASSWORD` | for admin | Leave it empty to disable admin |
-| `SESSION_SECRET` | yes in prod | 32+ random characters (`openssl rand -base64 32`). Signs the admin cookie and salts the device and IP hashes. |
+| `ADMIN_PASSWORD` | for admin | 12+ characters. Leave it empty to disable admin. Changing it signs every admin out. Five wrong passwords lock an IP out for 15 minutes. |
+| `SESSION_SECRET` | yes | 32+ random characters (`openssl rand -base64 32`). Signs the admin cookie and salts the device and IP hashes. The app refuses to run without it, except under `next dev` (or with `ALLOW_DEV_SECRET=1`, for throwaway previews only). Rotating it also resets all device and IP hashes. |
 | `PUBLIC_BASE_URL` | for printing | The origin printed in QR codes, e.g. `https://laundry.example.com` |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional | Turns on the invisible Cloudflare Turnstile bot check for reports. Both must be set; leave empty to disable. |
 

@@ -44,3 +44,34 @@ test("a dryer that dries much worse than its room-mates is flagged with a WASH s
   await page.goto("/b/hedrick-summit/laundry");
   await expect(page.getByRole("link", { name: /^Dryer 4, .*/ })).toContainText("Weak heat");
 });
+
+test("undo doesn't reset the per-machine rate limit", async ({ page }) => {
+  await page.goto("/m/hsw1?r=1");
+  await page.waitForTimeout(900);
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: /Worked fine/ }).click();
+  await sheet.getByRole("button", { name: "Submit report" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByRole("status").getByText("Report removed.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Report how it went" }).click();
+  await page.waitForTimeout(900);
+  await page.getByRole("dialog").getByRole("radio", { name: /Worked fine/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Submit report" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("just reported");
+});
+
+// Keep this test last: it locks the (shared, localhost) test IP out of admin login for 15 minutes.
+test("admin login locks out an IP after repeated wrong passwords", async ({ page }) => {
+  await page.goto("/admin/login");
+  const attempt = async (password: string) => {
+    await page.getByLabel("Password").fill(password);
+    const done = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/admin/login"));
+    await page.getByRole("button", { name: "Log in" }).click();
+    await done;
+  };
+  for (let i = 0; i < 5; i++) await attempt(`wrong-password-${i}`);
+  await expect(page.locator("form").getByRole("alert")).toContainText("Wrong password");
+  await attempt("e2e-password"); // correct, but the IP is now locked out
+  await expect(page.locator("form").getByRole("alert")).toContainText("Too many wrong passwords");
+});
