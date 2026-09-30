@@ -75,3 +75,28 @@ test("admin login locks out an IP after repeated wrong passwords", async ({ page
   await attempt("e2e-password"); // correct, but the IP is now locked out
   await expect(page.locator("form").getByRole("alert")).toContainText("Too many wrong passwords");
 });
+
+test("load picker tailors the setting to the fabrics and pre-fills the report", async ({ page }) => {
+  await page.goto("/m/hsd6");
+  const load = page.getByRole("region", { name: "What's in your load?" });
+  await load.getByRole("button", { name: "Wool & sweaters" }).click();
+  const advice = load.getByTestId("load-advice");
+  await expect(advice).toContainText("Use No heat for this load");
+  await expect(advice).toContainText("Wool is safest dried flat on a rack");
+
+  // Picks are remembered on the phone and carried to other machines and into the report.
+  await page.goto("/m/hsw4");
+  await load.getByRole("button", { name: "Wool & sweaters" }).click(); // off
+  await load.getByRole("button", { name: "Towels & bedding" }).click();
+  await expect(load.getByTestId("load-advice")).toContainText("Use Hot water for this load");
+
+  await page.getByRole("button", { name: "Report how it went" }).click();
+  await page.waitForTimeout(900);
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: /Worked fine/ }).click();
+  await expect(sheet.getByText(/Your load \(Towels & bedding\) is/)).toBeVisible();
+  await sheet.getByRole("button", { name: "Submit report" }).click();
+  await expect(page.getByRole("status").getByText(/report saved/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Recent reports" }).getByText("Towels & bedding")).toBeVisible();
+});
