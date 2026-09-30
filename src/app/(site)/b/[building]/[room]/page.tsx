@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import { BackLink, Page } from "@/components/chrome";
 import { StatusIcon, QrIcon } from "@/components/icons";
 import { KindFilter } from "@/components/kind-filter";
+import { LaundryHelper } from "@/components/laundry-helper";
 import { MachineCard } from "@/components/machine-card";
 import { TONE } from "@/components/status";
+import { assistantConfigured } from "@/lib/assistant-server";
+import { getConfig } from "@/lib/config-server";
 import { getRoom, type MachineView } from "@/lib/queries";
 import type { StatusLevel } from "@/lib/status";
 
@@ -47,6 +50,7 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
   const dryers = data.machines.filter((m) => m.kind === "dryer");
   const washers = data.machines.filter((m) => m.kind === "washer");
   const empty = data.totalReports === 0;
+  const helper = assistantConfigured() && (await getConfig()).assistantEnabled && data.machines.length > 0;
 
   return (
     <Page>
@@ -69,6 +73,9 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
           </div>
         </div>
       )}
+
+      {/* AI helper: clothes → machine and setting (PLAN.md §6.8) */}
+      {helper && <LaundryHelper roomId={data.room.id} />}
 
       {data.machines.length === 0 ? (
         <p className="mt-8 text-center text-label text-text-3">No machines in this room yet.</p>

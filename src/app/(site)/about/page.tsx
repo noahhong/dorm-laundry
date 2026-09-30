@@ -58,6 +58,7 @@ export default async function About() {
           <p>
             No accounts. We set one random cookie so each phone counts once, and store only a hash of it. Your IP address is never
             stored; a daily-salted hash is kept for rate limiting. Notes you write are public, so please don&apos;t include names.
+            If you use the laundry helper chat, what you type is sent to Anthropic&apos;s AI to answer it; we don&apos;t store it.
           </p>
         </section>
         <p className="rounded-[12px] bg-surface-2 p-3 text-label">

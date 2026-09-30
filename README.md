@@ -7,6 +7,7 @@ Finding the best setting for dorm laundry (starting at Hedrick Summit) so no mor
 - whether the machine **works** (Works / Caution / Broken / No reports)
 - for dryers, the **setting that actually dries** without cooking your clothes
 - optionally, **what to use for their load**: tap what's in it (athletic wear, towels, wool…) and get the setting for that machine and that load
+- optionally, the **laundry helper**: describe your clothes in your own words ("gym leggings and a wool sweater") and an AI helper tells you which washer and dryer to use and on what setting, using the same rules and this room's reports
 
 After a load, they report how it went in **3 taps**, with no login and no app. Status and recommendations come from recent reports, with time decay (see [PLAN.md §6](PLAN.md#6-algorithm-status-and-best-setting)).
 
@@ -47,7 +48,7 @@ To reset the demo data, run `npm run db:seed -- --reset`.
 | **Dashboard** | Reports today / this week with trends, a 14-day chart, top problems, every machine that needs attention (broken, doubtful, weak, never reported), a per-room overview, and the rules currently in effect |
 | **Rooms & machines** | Add, rename and delete buildings and rooms. Per room: which **dryer settings those dryers actually have** (residents can only report, and get recommended, what you tick), minutes per payment, WASH room code. Add machines in bulk, edit, mark out of order / fixed, retire, and **print QR sticker sheets** |
 | **Reports** | Search and filter every report (room, kind, outcome, visible/hidden/undone, period), hide or unhide one or many, and **download a CSV** |
-| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
+| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; the laundry helper chat on/off and its limits; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
 | **Activity log** | Who-did-what record of every admin action, including before → after for each setting |
 
 Settings are stored in the database, not in code, so they survive deploys and apply to the public pages immediately. Secrets (admin password, bot-check keys) stay in environment variables.
@@ -77,6 +78,8 @@ Settings are stored in the database, not in code, so they survive deploys and ap
 | `SESSION_SECRET` | yes | 32+ random characters (`openssl rand -base64 32`). Signs the admin cookie and salts the device and IP hashes. The app refuses to run without it, except under `next dev` (or with `ALLOW_DEV_SECRET=1`, for throwaway previews only). Rotating it also resets all device and IP hashes. |
 | `PUBLIC_BASE_URL` | for printing | The origin printed in QR codes, e.g. `https://laundry.example.com` |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional | Turns on the invisible Cloudflare Turnstile bot check for reports. Both must be set; leave empty to disable. |
+| `ANTHROPIC_API_KEY` | optional | Turns on the laundry helper chat (get a key at console.anthropic.com). Leave empty to hide it. Admins can also switch it off and cap its use in Settings. |
+| `ANTHROPIC_MODEL` | optional | The Claude model for the helper. Defaults to `claude-opus-5-5`; `claude-sonnet-5-5` costs about half. |
 
 ## Deploy (Vercel + Turso, both free tiers)
 
@@ -113,9 +116,10 @@ Schema changes: edit `src/lib/db/schema.ts`, run `npm run db:generate`, commit t
 src/app/                 routes: / · /b/[building]/[room] · /m/[code] · /about · /admin/** · /api/**
 src/app/actions.ts       submitReport / undoReport (Server Actions)
 src/app/admin/actions.ts admin mutations (password-protected)
-src/components/          StatusBadge, SettingChip, MachineCard, HeatLadder, LoadAdvice, ReportSheet, icons
+src/components/          StatusBadge, SettingChip, MachineCard, HeatLadder, LoadAdvice, LaundryHelper, ReportSheet, icons
 src/lib/status.ts        the status and best-setting algorithm (pure, unit-tested)
 src/lib/load-advice.ts   load-based suggestions from fabrics and load size (pure, unit-tested)
+src/lib/assistant*.ts    the laundry helper: prompt, plan_load tool and ranking (pure, tested) + the Claude call
 src/lib/labels.ts        enums, human copy, WASH help links
 src/lib/queries.ts       DB loaders that attach computed status
 src/lib/device.ts        anonymous device cookie, hashed IP, rate limits
@@ -130,3 +134,4 @@ tests/                   Vitest unit tests and Playwright e2e
 
 - `GET /api/rooms/:roomId`: the room's machines, each with status and recommendation
 - `GET /api/machines/:code`: one machine with its status, recommendation and recent reports
+- `POST /api/assistant`: the laundry helper chat (only when `ANTHROPIC_API_KEY` is set; see PLAN.md §6.8)

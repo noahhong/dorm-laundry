@@ -1,11 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3100;
+const MOCK_PORT = 3101;
 const env = {
   DATABASE_URL: "file:e2e.db",
   ADMIN_PASSWORD: "e2e-password",
   SESSION_SECRET: "e2e-session-secret-at-least-32-characters-long",
   PUBLIC_BASE_URL: `http://localhost:${PORT}`,
+  // The laundry helper talks to a local stand-in for the Claude API (tests/e2e/mock-anthropic.mjs).
+  ANTHROPIC_API_KEY: "e2e-mock-key",
+  ANTHROPIC_BASE_URL: `http://localhost:${MOCK_PORT}`,
 };
 
 export default defineConfig({
@@ -19,12 +23,20 @@ export default defineConfig({
     browserName: "chromium",
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : undefined,
   },
-  webServer: {
-    // Fresh DB each run; requires `npm run build` first.
-    command: `rm -f e2e.db && npm run db:migrate && npm run db:seed && npx next start -p ${PORT}`,
-    url: `http://localhost:${PORT}/about`,
-    env,
-    reuseExistingServer: false,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "node tests/e2e/mock-anthropic.mjs",
+      url: `http://localhost:${MOCK_PORT}`,
+      env: { MOCK_ANTHROPIC_PORT: String(MOCK_PORT) },
+      reuseExistingServer: false,
+    },
+    {
+      // Fresh DB each run; requires `npm run build` first.
+      command: `rm -f e2e.db && npm run db:migrate && npm run db:seed && npx next start -p ${PORT}`,
+      url: `http://localhost:${PORT}/about`,
+      env,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
 });
