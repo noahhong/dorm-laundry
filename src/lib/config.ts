@@ -28,6 +28,7 @@ export const GROUPS = [
   { id: "status", title: "Machine status", blurb: "How reports turn into Works / Caution / Broken." },
   { id: "settings", title: "Dryer settings", blurb: "How reports turn into a recommended dryer setting." },
   { id: "load", title: "Load advice", blurb: "Limits per fabric for “What's in your load?”. A dryer's own learned setting is used unless the load needs something cooler." },
+  { id: "assistant", title: "Laundry helper chat", blurb: "An AI chat on room and machine pages that turns “what I'm washing” into a machine and setting, using the rules above. Only shows when the server has an ANTHROPIC_API_KEY." },
   { id: "outliers", title: "Weak-dryer detection", blurb: "Flags a dryer that dries much worse than its room-mates." },
   { id: "timer", title: "“I started it” timer", blurb: "Residents tap “I started it” so others can see when a machine should be free." },
   { id: "abuse", title: "Reports & abuse limits", blurb: "Rate limits and spam speed bumps for anonymous reports." },
@@ -65,6 +66,10 @@ export const FIELDS = [
   { key: "woolWash", group: "load", kind: "choice", options: WASHER_SETTINGS, default: "cold", label: "Wool & sweaters: hottest wash water", help: "" },
   { key: "printsMaxDryer", group: "load", kind: "choice", options: DRYER_SETTINGS, default: "low", label: "Graphic tees: hottest dryer setting", help: "Screen prints crack or peel on high heat." },
   { key: "printsWash", group: "load", kind: "choice", options: WASHER_SETTINGS, default: "cold", label: "Graphic tees: hottest wash water", help: "" },
+
+  { key: "assistantEnabled", group: "assistant", kind: "bool", default: true, label: "Show the laundry helper chat", help: "Residents describe their clothes and get a machine and setting. Settings always come from the load rules and the room's reports, never from the AI alone." },
+  { key: "assistantPerIpPerHour", group: "assistant", kind: "int", min: 1, max: 200, step: 1, default: 20, label: "Questions per network per hour", help: "A whole dorm can share one address, so keep this generous.", unit: "questions" },
+  { key: "assistantPerDay", group: "assistant", kind: "int", min: 10, max: 20000, step: 10, default: 1000, label: "Questions per day, whole site", help: "Caps what the chat can cost. Each question is one to four AI calls. Counts reset when the server restarts.", unit: "questions" },
 
   { key: "outlierEnabled", group: "outliers", kind: "bool", default: true, label: "Detect weak dryers", help: "Show a “Dries worse than the other dryers here” banner with a link to WASH's service request." },
   { key: "outlierMinReports", group: "outliers", kind: "int", min: 2, max: 20, step: 1, default: 3, label: "Reports needed on the dryer", help: "Different devices, Medium/High loads only.", unit: "reports" },

@@ -229,6 +229,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - ✅ **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring. Pre-fills the room's minutes per payment (dryers) or a site-wide default; the newest tap wins; reporting how it went, or "Stop timer", ends your own. Stored in `machine_runs`; logic is `currentRun` in `src/lib/status.ts`.
 - ✅ **Notify me** when a broken machine is marked fixed (Web Push via PWA, §17).
 - ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7). Still to do: learn per-fabric settings from the recorded fabrics.
+- ✅ **Laundry helper chat**: describe the clothes in your own words, get the machine and setting (§6.8). Only on when the server has an `ANTHROPIC_API_KEY`.
 - ✅ Room-level fallback recommendation (§6.4).
 - ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
 - ✅ PWA manifest + add-to-home-screen. Still to do: favorite room.
@@ -468,6 +469,27 @@ Starting from the machine's own learned setting is the point: "Low" on a dryer t
 
 Reports record the fabrics (`reports.fabrics`, optional). Nothing reads them yet besides the report list and CSV; they are there so a later version can learn per-fabric outcomes per machine.
 
+### 6.8 Laundry helper chat *(added in v1)*
+An "Ask the laundry helper" card on room and machine pages. The resident types what they're washing ("gym leggings and a white hoodie") and gets which washer and dryer to use and on what setting, with links to those machines. Optional: it never touches reporting, and the page works the same without it.
+
+Claude (Anthropic's API) only does the language part. It maps the description onto the seven fabric categories of §6.7 and calls one tool, `plan_load`, which runs on our server:
+
+```
+plan_load(fabrics, size):
+  for washers and for dryers:
+    ranked  = usable machines, best first: Works > No reports > Caution (Broken left out);
+              weak dryers (§6.5) sink; more confident setting data wins; ties go to the machine the resident is at
+    pick    = suggestForLoad(kind, load, fabric limits, ranked[0].recommendation, room's offered settings)   -- §6.7
+    also    = the other usable machines, the broken ones to avoid, and the setting for the machine the resident
+              is standing at if it isn't the best one
+```
+So every setting the helper names comes from the admin's fabric limits and this room's reports, never from the model. The system prompt lists the room's machines, status and dryer settings; tells Claude to call `plan_load` before recommending anything, to ask one question when the load is unclear, to flag dry-clean-only or leather, to keep answers to a few sentences, and to decline off-topic questions. The helper's reading of the load also fills in "What's in your load?" on the machine page (and so the report sheet).
+
+- **Model**: Claude Opus 5.5 at low effort (short chat answers); `ANTHROPIC_MODEL=claude-sonnet-5-5` halves the cost. If a safety filter declines, the API's default fallback model retries.
+- **Stateless**: the browser sends the last 12 turns (600 characters each) with every question; nothing is stored.
+- **Limits** (Settings → Laundry helper chat): on/off, questions per network per hour (default 20), questions per day for the whole site (default 1,000). Counted in memory per server process, so a restart resets them.
+- Code: `src/lib/assistant.ts` (prompt, tool, ranking; pure, unit-tested), `src/lib/assistant-server.ts` (the Claude call), `POST /api/assistant`, `src/components/laundry-helper.tsx`. E2E runs against a local stand-in for the API (`tests/e2e/mock-anthropic.mjs`).
+
 ---
 
 ## 7. Pages and routes
@@ -499,6 +521,9 @@ Mutations are **Server Actions**: progressive enhancement, no hand-written fetch
 Read-only JSON for widgets, bots and future apps:
 - `GET /api/rooms/[roomId]`: `{ room, machines: [{ code, label, kind, status, recommendation }] }`
 - `GET /api/machines/[code]`: machine + status + recommendation + recent visible reports (no hashes)
+
+Laundry helper (§6.8):
+- `POST /api/assistant` with `{ roomId, machineCode?, messages: [{ role, content }] }` → `{ reply, plan: { load, picks } | null }`. 404 when the helper is off or unconfigured, 429 over the limits.
 
 ---
 
@@ -804,6 +829,7 @@ Layered, cheapest first:
 - No accounts, names or emails in the MVP. Raw IPs are never stored (hashed with a daily salt, only for rate limiting).
 - Device IDs are stored only as a hash.
 - Report notes are public. The UI says so, and asks not to include names.
+- Laundry helper questions are sent to Anthropic's API to be answered, and are not stored by the site. The card says the answers come from AI.
 - Load photos are optional, admin-only unless the owner turns on "Show load photos publicly", and re-encoded on the phone so location metadata is never uploaded. Hiding a report hides its photo; deleting a report deletes it.
 - Reports older than 180 days can be purged (they no longer affect results after about 60 days).
 - "Notify me when it's fixed" stores the browser's push endpoint and keys (plus the device hash, for a cap) only until the one notification is sent, the resident cancels, or 90 days pass (§17).
@@ -932,6 +958,7 @@ Nothing the owner might want to change is hard-coded any more.
 | Machine status | **reports needed to mark Broken** (1 = fastest, 2+ = "Caution: reported broken, not yet confirmed" until that many different devices agree), status half-life, report window, newest-report boost |
 | Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
 | Load advice | on/off; per fabric: hottest dryer setting and hottest wash water (§6.7) |
+| Laundry helper chat | on/off, questions per network per hour, questions per day site-wide (§6.8) |
 | Weak-dryer detection | on/off, reports needed, damp share, sibling damp share, gap |
 | "I started it" timer | default washer and dryer cycle length, how long "should be done" shows after the estimate |
 | Abuse | per-machine cooldown, reports per device/day, per network/day, minimum fill time, undo window |
