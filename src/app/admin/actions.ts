@@ -1,12 +1,13 @@
 "use server";
 
-import { and, eq, max } from "drizzle-orm";
+import { and, count, eq, gte, max } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { checkPassword, endAdminSession, requireAdmin, startAdminSession } from "@/lib/admin-auth";
 import { getDb } from "@/lib/db";
-import { buildings, machines, reports, rooms } from "@/lib/db/schema";
+import { buildings, loginFailures, machines, reports, rooms } from "@/lib/db/schema";
+import { ipHash } from "@/lib/device";
 import { machineCode, randomId, slugify } from "@/lib/ids";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -18,12 +19,19 @@ function refresh() {
   revalidatePath("/", "layout");
 }
 
-let lastFailedLogin = 0;
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const LOGIN_MAX_FAILURES = 5;
+
 export async function login(_: FormState, fd: FormData): Promise<FormState> {
-  // Crude brute-force brake: at most one failed attempt per second per instance.
-  if (Date.now() - lastFailedLogin < 1000) return { error: "Slow down and try again." };
+  // Throttle per (salted) client IP in the database, so it holds across serverless instances and one
+  // attacker can't lock everyone else out the way a global counter would.
+  const db = getDb();
+  const ip = await ipHash();
+  const since = Date.now() - LOGIN_WINDOW_MS;
+  const [{ n }] = await db.select({ n: count() }).from(loginFailures).where(and(eq(loginFailures.ipHash, ip), gte(loginFailures.createdAt, since)));
+  if (n >= LOGIN_MAX_FAILURES) return { error: "Too many wrong passwords. Try again in 15 minutes." };
   if (!checkPassword(str(fd, "password"))) {
-    lastFailedLogin = Date.now();
+    await db.insert(loginFailures).values({ id: randomId(), ipHash: ip, createdAt: Date.now() });
     return { error: "Wrong password." };
   }
   await startAdminSession();

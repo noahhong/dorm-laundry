@@ -750,6 +750,15 @@ Layered, cheapest first:
 7. **Notes** are limited to 280 characters, rendered as plain text, and never linkified.
 8. **v1:** Turnstile (invisible) on submit; verified school email counts 2×; "flag this report".
 
+### 11.1 Hardening pass *(after the first security review)*
+- The minimum-time check needs a client-supplied `elapsedMs`; it is now required, and the honeypot is dropped silently instead of failing validation. Both are speed bumps for naive scripts, not real bot defenses: turn on Turnstile before relying on them.
+- The client IP comes from platform-set headers (`x-vercel-forwarded-for`, `x-real-ip`) before the client-appendable `x-forwarded-for`. The per-IP daily cap is 300, because a whole dorm can share one NAT address.
+- Undo soft-deletes (`undone_at`), so report → undo → report can't reset the rate limits.
+- Admin login failures are counted per salted IP in the database (5 per 15 min), which works across serverless instances and can't be used to lock out the real admin from elsewhere.
+- The admin cookie is bound to the current `ADMIN_PASSWORD`; `SESSION_SECRET` (32+ chars) is mandatory outside `next dev`; admin password must be 12+ chars.
+- "Mark fixed" also clears the outlier flag (§6.5); retired machines 404 in the JSON API.
+- **Known gap (owner decision):** one fresh device can still flip a machine to "broken" (PLAN.md §6.2 treats one fresh `not_working` report as enough), and a script that mints fresh devices can do this to many machines. That is what makes "it ate my money" useful immediately, so it is left as is for the pilot; see open question 9.
+
 ## 12. Privacy
 - No accounts, names or emails in the MVP. Raw IPs are never stored (hashed with a daily salt, only for rate limiting).
 - Device IDs are stored only as a hash.
@@ -787,6 +796,7 @@ Layered, cheapest first:
 6. **School email:** restrict the optional v1 sign-in to `@g.ucla.edu` / `@ucla.edu`?
 7. **Tone and branding:** a name for the site? (Placeholder: "Dorm Laundry".)
 8. **Public notes:** allow free-text notes publicly, or admin-reviewed only?
+9. **One report marks a machine broken:** today a single fresh "didn't work" report flips a machine to Broken (fast warnings, but a script could abuse it). Keep that for the pilot, or require two separate reports unless the reporter is verified or Turnstile is on?
 
 ---
 

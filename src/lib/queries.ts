@@ -39,7 +39,7 @@ async function reportsFor(machineIds: string[], now: number) {
   const rows = await getDb()
     .select()
     .from(reports)
-    .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, now - WINDOW), isNull(reports.hiddenAt)));
+    .where(and(inArray(reports.machineId, machineIds), gte(reports.createdAt, now - WINDOW), isNull(reports.hiddenAt), isNull(reports.undoneAt)));
   const byMachine = new Map<string, Report[]>();
   for (const r of rows) {
     const list = byMachine.get(r.machineId) ?? [];
@@ -69,11 +69,13 @@ async function machinesForRoom(roomId: string, now: number, { includeRetired = f
     now,
   );
   const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now), retiredAt: m.retiredAt, position: m.position }));
+  const resetAt = new Map(ms.map((m) => [m.id, m.statusResetAt ?? 0]));
   // Broken dryers are already flagged, and their wet loads would skew the room's baseline, so they sit this out.
   const weak = detectWeakDryers(
     views
       .filter((v) => v.kind === "dryer" && v.retiredAt == null && v.status.level !== "broken")
-      .map((v) => ({ id: v.id, reports: (rs.get(v.id) ?? []).filter((r) => !r.hiddenAt) })),
+      // "Mark fixed" means earlier damp loads no longer count against the machine.
+      .map((v) => ({ id: v.id, reports: (rs.get(v.id) ?? []).filter((r) => !r.hiddenAt && r.createdAt >= (resetAt.get(v.id) ?? 0)) })),
     now,
   );
   return withRoomFallback(views.map((v) => ({ ...v, weak: weak.get(v.id) ?? null })));
@@ -154,7 +156,7 @@ export async function recentReportsForRoom(roomId: string, limit = 40) {
     .select({ report: reports, label: machines.label, code: machines.code })
     .from(reports)
     .innerJoin(machines, eq(reports.machineId, machines.id))
-    .where(eq(machines.roomId, roomId))
+    .where(and(eq(machines.roomId, roomId), isNull(reports.undoneAt)))
     .orderBy(desc(reports.createdAt))
     .limit(limit);
 }

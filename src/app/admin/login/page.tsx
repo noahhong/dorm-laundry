@@ -24,7 +24,7 @@ export default async function LoginPage() {
           </StatefulForm>
         ) : (
           <p className="mt-2 text-label text-text-2">
-            Admin is disabled. Set <code>ADMIN_PASSWORD</code> (and <code>SESSION_SECRET</code>) in the environment and restart.
+            Admin is disabled. Set <code>ADMIN_PASSWORD</code> (12+ characters) and <code>SESSION_SECRET</code> (32+ random characters) in the environment and restart.
           </p>
         )}
       </div>

@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, ctx: RouteContext<"/api/machines/[code]">) {
   const { code } = await ctx.params;
   const data = await getMachine(code);
-  if (!data) return Response.json({ error: "not_found" }, { status: 404 });
+  if (!data || data.retired) return Response.json({ error: "not_found" }, { status: 404 });
   const { view, recent, room, building } = data;
   return Response.json(
     {

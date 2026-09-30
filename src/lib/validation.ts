@@ -23,9 +23,9 @@ export const reportSchema = z.object({
     .nullable()
     .optional(),
   /** Honeypot: humans never see this field. */
-  website: z.string().max(0).optional(),
+  website: z.string().max(500).optional(),
   /** ms the sheet was open; bots submit instantly. */
-  elapsedMs: z.number().int().min(0).optional(),
+  elapsedMs: z.number().int().min(0).max(86_400_000),
   /** Cloudflare Turnstile token; required only when TURNSTILE_SECRET_KEY is set. */
   turnstileToken: z.string().max(4096).optional(),
 });
