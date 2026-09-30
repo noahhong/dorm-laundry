@@ -230,7 +230,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - **Notify me** when a broken machine is marked fixed (Web Push via PWA).
 - **Fabric-aware tips** ("Athletic wear? Use Low on this machine").
 - ✅ Room-level fallback recommendation (§6.4).
-- Outlier detection: "D3 is much weaker than other dryers here — report to WASH" with a pre-filled service request.
+- ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
 - ✅ PWA manifest + add-to-home-screen. Still to do: favorite room.
 - ✅ Manual theme toggle (Auto / Light / Dark). Still to do: Spanish / Chinese / Korean i18n.
 - Admin: moderation queue for flagged reports, CSV export, report counts over time.
@@ -418,7 +418,19 @@ if |informed| ≥ 2:
 ```
 The lower median, not the majority, keeps the safety-first rule: an untested dryer may be the one that runs hot. Retired machines don't vote. Implemented in `applyRoomFallback` (`src/lib/status.ts`).
 
-### 6.5 Washers
+### 6.5 Outlier dryers *(added in v1)*
+A dryer that leaves clothes damp at Medium/High far more often than its room-mates probably has a vent or heater fault, which no setting tweak fixes. It is flagged with a link to WASH's service request.
+
+```
+per dryer: latest report per device, Medium/High only, drying outcomes only (dry=0, damp=0.5, wet=1),
+           weighted with the 21-day setting decay -> rate = damp-weight / total-weight
+flag if   reports ≥ 3   and   rate ≥ 0.45
+     and  sibling pooled weight ≥ 4 from ≥ 2 dryers   and   sibling rate ≤ 0.25
+     and  rate - sibling rate ≥ 0.30
+```
+Deliberately conservative: Low and Delicates are ignored (damp is expected there), broken dryers are excluded (their wet loads say nothing about the rest), and if the whole room is weak nothing is flagged, since that points at the room. Implemented in `detectWeakDryers` (`src/lib/status.ts`).
+
+### 6.6 Washers
 Status only. Washer settings are recorded (hot/warm/cold) but not recommended in the MVP.
 
 ---
