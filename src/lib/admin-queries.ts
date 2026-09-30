@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, gte, isNotNull, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { auditLog, buildings, machines, reports, rooms } from "./db/schema";
+import { auditLog, buildings, machines, pushSubscriptions, reports, rooms } from "./db/schema";
 import { getConfig } from "./config-server";
 import { listBuildingsWithRooms, machinesForRoom } from "./queries";
 import { SYMPTOM_LABEL } from "./labels";
@@ -242,4 +242,15 @@ export async function listAllRooms() {
     .from(rooms)
     .innerJoin(buildings, eq(rooms.buildingId, buildings.id))
     .orderBy(buildings.name, rooms.name);
+}
+
+/** How many browsers are waiting to hear each machine in a room is fixed (PLAN.md §17). */
+export async function watchersByMachine(roomId: string): Promise<Map<string, number>> {
+  const rows = await getDb()
+    .select({ machineId: pushSubscriptions.machineId, n: count() })
+    .from(pushSubscriptions)
+    .innerJoin(machines, eq(pushSubscriptions.machineId, machines.id))
+    .where(eq(machines.roomId, roomId))
+    .groupBy(pushSubscriptions.machineId);
+  return new Map(rows.map((r) => [r.machineId, r.n]));
 }

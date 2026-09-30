@@ -16,13 +16,15 @@ const base = env("PUBLIC_BASE_URL");
 add("PUBLIC_BASE_URL", /^https:\/\/[^/]+$/.test(base), base ? (/^https:\/\/[^/]+$/.test(base) ? base : "must be https://your-domain with no trailing slash") : "missing (QR stickers would point at the wrong address)");
 const ts = Number(Boolean(env("TURNSTILE_SITE_KEY"))) + Number(Boolean(env("TURNSTILE_SECRET_KEY")));
 add("Turnstile bot check", ts !== 1, ts === 2 ? "enabled" : ts === 0 ? "off (optional; turn on if spam appears)" : "only one of TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY is set: the check stays off", ts === 0);
+const vapid = Number(Boolean(env("VAPID_PUBLIC_KEY"))) + Number(Boolean(env("VAPID_PRIVATE_KEY")));
+add("Fixed-machine alerts", vapid !== 1, vapid === 2 ? "enabled" : vapid === 0 ? "off (optional; npx web-push generate-vapid-keys)" : "only one of VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY is set: alerts stay off", vapid === 0);
 
 async function main() {
   if (dbUrl) {
     try {
       const client = createClient({ url: dbUrl, authToken: env("DATABASE_AUTH_TOKEN") || undefined });
       const tables = (await client.execute("select name from sqlite_master where type='table'")).rows.map((r) => String(r.name));
-      const need = ["buildings", "rooms", "machines", "reports", "settings", "audit_log", "login_failures"];
+      const need = ["buildings", "rooms", "machines", "reports", "settings", "audit_log", "login_failures", "push_subscriptions"];
       const missing = need.filter((t) => !tables.includes(t));
       add("Database reachable", true, "connected");
       add("Database migrated", missing.length === 0, missing.length ? `missing tables: ${missing.join(", ")} (run npm run db:migrate)` : "all tables present");

@@ -111,7 +111,30 @@ export const auditLog = sqliteTable(
   (t) => [index("audit_log_at").on(t.at)],
 );
 
+/** Browsers waiting for a broken machine to be fixed (Web Push). One-shot: deleted once notified or cancelled. */
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** Same hash as reports.device_hash; caps how many machines one phone can watch. */
+    deviceHash: text("device_hash").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("push_subscriptions_machine_endpoint").on(t.machineId, t.endpoint),
+    index("push_subscriptions_device").on(t.deviceHash),
+    index("push_subscriptions_created").on(t.createdAt),
+  ],
+);
+
 export type Building = typeof buildings.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type Machine = typeof machines.$inferSelect;
 export type Report = typeof reports.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

@@ -1,11 +1,16 @@
 import { defineConfig, devices } from "@playwright/test";
+import webpush from "web-push";
 
 const PORT = 3100;
+// Throwaway VAPID keys so the "notify me when it's fixed" UI is on during e2e.
+const vapid = webpush.generateVAPIDKeys();
 const env = {
   DATABASE_URL: "file:e2e.db",
   ADMIN_PASSWORD: "e2e-password",
   SESSION_SECRET: "e2e-session-secret-at-least-32-characters-long",
   PUBLIC_BASE_URL: `http://localhost:${PORT}`,
+  VAPID_PUBLIC_KEY: vapid.publicKey,
+  VAPID_PRIVATE_KEY: vapid.privateKey,
 };
 
 export default defineConfig({

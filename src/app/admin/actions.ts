@@ -3,6 +3,7 @@
 import { and, count, eq, gte, inArray, max } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import { checkPassword, endAdminSession, requireAdmin, startAdminSession } from "@/lib/admin-auth";
 import { getDb } from "@/lib/db";
@@ -12,6 +13,7 @@ import { parseSettingsForm, type FormErrors } from "@/lib/config";
 import { getConfig, resetConfig, saveConfig } from "@/lib/config-server";
 import { ipHash } from "@/lib/device";
 import { machineCode, randomId, slugify } from "@/lib/ids";
+import { notifyIfFixed } from "@/lib/push";
 import { settingsToStore } from "@/lib/rooms";
 
 export type FormState = { error?: string; ok?: string; errors?: FormErrors } | undefined;
@@ -136,13 +138,18 @@ export async function setOutOfOrder(fd: FormData) {
   await machineAction(fd, { adminState: "out_of_order", adminNote: str(fd, "note") || null }, "machine.out_of_order");
 }
 
-/** Clears the override and ignores older reports for status (PLAN.md §6.1). */
+/** Clears the override and ignores older reports for status (PLAN.md §6.1). Tells anyone waiting on it (§17). */
 export async function markFixed(fd: FormData) {
   await machineAction(fd, { adminState: null, adminNote: null, statusResetAt: Date.now() }, "machine.mark_fixed");
+  const id = str(fd, "machineId");
+  if (id) after(() => notifyIfFixed(id, { force: true }));
 }
 
+/** Only the admin override goes; if residents' reports still say Broken, watchers keep waiting. */
 export async function clearOutOfOrder(fd: FormData) {
   await machineAction(fd, { adminState: null, adminNote: null }, "machine.clear_out_of_order");
+  const id = str(fd, "machineId");
+  if (id) after(() => notifyIfFixed(id));
 }
 
 export async function retireMachine(fd: FormData) {

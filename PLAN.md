@@ -227,7 +227,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - Optional **school-email magic link** (Better Auth + Resend) for a trust boost and "my reports".
 - ✅ Cloudflare **Turnstile** on report submit (invisible), turned on by setting two env vars.
 - **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring.
-- **Notify me** when a broken machine is marked fixed (Web Push via PWA).
+- ✅ **Notify me** when a broken machine is marked fixed (Web Push via PWA, §17).
 - ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7). Still to do: learn per-fabric settings from the recorded fabrics.
 - ✅ Room-level fallback recommendation (§6.4).
 - ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
@@ -487,6 +487,7 @@ Mutations are **Server Actions**: progressive enhancement, no hand-written fetch
 
 - `submitReport(formData)`: validates with zod, rate-limits, inserts, `revalidatePath` on room and machine.
 - `undoReport(id)`: only the same device, within 5 minutes.
+- `watchForFix(code, subscription)` / `stopWatchingForFix(code, endpoint)` / `isWatchingForFix(code, endpoint)`: "notify me when it's fixed" (§17).
 - Admin actions: `createBuilding`, `createRoom`, `addMachines`, `updateMachine`, `setOutOfOrder`, `markFixed`, `retireMachine`, `hideReport`, `login`, `logout`.
 
 Read-only JSON for widgets, bots and future apps:
@@ -798,6 +799,7 @@ Layered, cheapest first:
 - Device IDs are stored only as a hash.
 - Report notes are public. The UI says so, and asks not to include names.
 - Reports older than 180 days can be purged (they no longer affect results after about 60 days).
+- "Notify me when it's fixed" stores the browser's push endpoint and keys (plus the device hash, for a cap) only until the one notification is sent, the resident cancels, or 90 days pass (§17).
 - `/about` explains all of this and states that the site is **not affiliated with WASH or the university**.
 
 ## 13. Accessibility
@@ -929,3 +931,34 @@ Nothing the owner might want to change is hard-coded any more.
 **Broken quorum.** This resolves open question 9 without forcing a choice: the default stays at 1 (fast warnings); setting it to 2 means a single script can no longer mark a machine Broken, and admins can still mark out of order directly. The quorum counts distinct devices, so one phone can't satisfy it twice.
 
 **Per-room dryer settings.** The report sheet offers only the room's settings, the server rejects others, and the ladder, the recommendation and the "no data" default (Medium if offered, else the lower middle of what is) are all restricted to them.
+
+---
+
+## 17. Notify when a broken machine is fixed *(v1, M3)*
+
+A resident looking at a Broken machine taps **Notify me when it's fixed** and gets **one** push notification when it works again. No account, opt-in per machine, cancellable from the same card.
+
+**When it's offered**
+- Only on machines whose status is Broken (reports or admin out-of-order), and only when `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are set.
+- iPhone/iPad Safari can only receive Web Push from a site added to the Home Screen (iOS 16.4+), so there the card explains how instead of showing the button. Browsers without push support don't see the card. If the resident blocked notifications, the card says how to unblock them.
+
+**What counts as fixed (decision)**
+| Trigger | Notifies when |
+|---|---|
+| Admin **Mark fixed** | Always: the admin's word is enough. |
+| Admin **Clear out-of-order** | The report-based status is no longer Broken or Caution. |
+| A resident's report | The status becomes Works or Unknown. With default settings one "works" against one "broken" is only *Mixed reports* (Caution), so it takes a second person; one fake "works" can't page everyone. |
+
+Status decaying on its own (no new report, no admin action) does not send anything.
+
+**How it works**
+- `public/sw.js` is a tiny service worker that only shows the notification and opens `/m/<code>` when tapped; it caches nothing. It is served with `Cache-Control: no-cache`.
+- `push_subscriptions` table: machine, endpoint, `p256dh`/`auth` keys, device hash, created time; unique per (machine, endpoint).
+- Sending uses `web-push` with VAPID, TTL 24 h, from `after()` so admins and reporters never wait on push services. The rows are deleted *before* sending (one-shot, and two overlapping triggers can't double-send). 404/410 from a push service is silently dropped.
+- The admin room page shows "N waiting to hear it's fixed" per machine.
+
+**Abuse limits**
+- The server POSTs to the endpoint a browser supplies, so only the browsers' push services are accepted: FCM (Chrome, Edge, Brave, Opera, Samsung), Mozilla autopush, Apple, and WNS; https only, no custom ports or credentials. Keys must be a 65-byte P-256 point and a 16-byte secret.
+- A browser can only watch a machine that is currently Broken; at most 20 watches per device and 500 per machine; watches expire after 90 days.
+- Cancelling requires the (unguessable) endpoint.
+
