@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { buildings, machines, reports, rooms, type Machine, type Report } from "./db/schema";
-import { applyRoomFallback, computeStatus, recommendSetting, WINDOW, type MachineStatus, type Recommendation } from "./status";
+import { applyRoomFallback, computeStatus, detectWeakDryers, recommendSetting, WINDOW, type MachineStatus, type Recommendation, type WeakDryer } from "./status";
 
 export interface MachineView {
   id: string;
@@ -14,6 +14,8 @@ export interface MachineView {
   adminNote: string | null;
   status: MachineStatus;
   recommendation: Recommendation | null;
+  /** Set when this dryer dries much worse than the others in its room. */
+  weak: WeakDryer | null;
 }
 
 function toView(m: Machine, rs: Report[], now: number): MachineView {
@@ -28,6 +30,7 @@ function toView(m: Machine, rs: Report[], now: number): MachineView {
     adminNote: m.adminNote,
     status: computeStatus({ kind: m.kind, adminState: m.adminState ?? null, adminNote: m.adminNote, statusResetAt: m.statusResetAt }, input, now),
     recommendation: m.kind === "dryer" ? recommendSetting(input, now) : null,
+    weak: null,
   };
 }
 
@@ -66,7 +69,14 @@ async function machinesForRoom(roomId: string, now: number, { includeRetired = f
     now,
   );
   const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now), retiredAt: m.retiredAt, position: m.position }));
-  return withRoomFallback(views);
+  // Broken dryers are already flagged, and their wet loads would skew the room's baseline, so they sit this out.
+  const weak = detectWeakDryers(
+    views
+      .filter((v) => v.kind === "dryer" && v.retiredAt == null && v.status.level !== "broken")
+      .map((v) => ({ id: v.id, reports: (rs.get(v.id) ?? []).filter((r) => !r.hiddenAt) })),
+    now,
+  );
+  return withRoomFallback(views.map((v) => ({ ...v, weak: weak.get(v.id) ?? null })));
 }
 
 /** Dryers with no setting data borrow the room's consensus (retired machines don't vote). */
@@ -117,9 +127,10 @@ export async function getMachine(code: string, now = Date.now()) {
   if (!row) return null;
   const rs = (await reportsFor([row.machine.id], now)).get(row.machine.id) ?? [];
   let view = toView(row.machine, rs, now);
-  if (view.recommendation?.basis === "default") {
-    const siblings = await machinesForRoom(row.room.id, now);
-    view = { ...view, recommendation: siblings.find((m) => m.id === view.id)?.recommendation ?? view.recommendation };
+  if (view.kind === "dryer") {
+    // Room context (sibling fallback and outlier detection) only applies to dryers.
+    const inRoom = (await machinesForRoom(row.room.id, now, { includeRetired: true })).find((m) => m.id === view.id);
+    if (inRoom) view = { ...view, recommendation: inRoom.recommendation, weak: inRoom.weak };
   }
   const recent: PublicReport[] = [...rs]
     .sort((a, b) => b.createdAt - a.createdAt)

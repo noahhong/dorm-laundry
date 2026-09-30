@@ -118,6 +118,28 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
         </div>
       </section>
 
+      {/* Outlier: this dryer is much weaker than its room-mates */}
+      {view.weak && (
+        <section aria-labelledby="weak-dryer" className="animate-fade-up mt-4 rounded-[var(--radius-lg)] border border-caution-icon/40 bg-caution-tint p-5">
+          <h2 id="weak-dryer" className="flex items-center gap-2 text-headline text-caution-fg">
+            <AlertIcon size={18} className="shrink-0" /> Dries worse than the other dryers here
+          </h2>
+          <p className="mt-1 text-label text-caution-fg">
+            {Math.round(view.weak.rate * 100)}% of Medium/High loads came out damp or wet here, versus {Math.round(view.weak.siblingRate * 100)}% on the
+            other dryers ({plural(view.weak.reports, "recent report")}). More time or heat may not fix it: it is likely a clogged vent or a heating
+            fault. Reporting it to WASH gets it repaired.
+          </p>
+          <a
+            href={WASH_LINKS.serviceRequest}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pressable mt-3 inline-flex h-11 items-center gap-1.5 rounded-full border border-caution-icon/40 bg-surface px-4 text-label font-semibold text-caution-fg"
+          >
+            Report to WASH{machine.washMachineNumber ? ` (machine #${machine.washMachineNumber})` : ""} <ExternalIcon />
+          </a>
+        </section>
+      )}
+
       {/* Recommended setting */}
       {rec && (
         <section aria-labelledby="best-setting" className="animate-fade-up mt-4 rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-e1" style={{ ["--i" as string]: 1 }}>

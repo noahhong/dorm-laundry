@@ -353,3 +353,50 @@ export function applyRoomFallback(recs: Recommendation[]): Recommendation[] {
   const roomRange = { min: DRYER_SETTINGS[informed[0]], max: DRYER_SETTINGS[informed[informed.length - 1]] };
   return recs.map((r) => (r.basis === "default" ? { ...r, setting: pick, basis: "room", roomMachines: informed.length, roomRange } : r));
 }
+
+export interface WeakDryer {
+  /** Decayed share of drying reports at Medium/High that came out damp or wet (0–1). */
+  rate: number;
+  /** Same measure pooled over the other dryers in the room. */
+  siblingRate: number;
+  /** Distinct devices whose latest Medium/High report counted for this dryer. */
+  reports: number;
+}
+
+const UNDER_AT_HEAT: Record<string, number> = { dry: 0, damp: 0.5, wet: 1 };
+
+function dryingTally(reports: ReportInput[], now: number) {
+  const usable = reports.filter(
+    (r) => (r.setting === "medium" || r.setting === "high") && r.outcome in UNDER_AT_HEAT && now - r.createdAt <= WINDOW && r.createdAt <= now,
+  );
+  let n = 0;
+  let under = 0;
+  const counted = latestBy(usable, (r) => r.deviceHash);
+  for (const r of counted) {
+    const w = r.trust * decay(now - r.createdAt, H_SETTING);
+    n += w;
+    under += w * UNDER_AT_HEAT[r.outcome];
+  }
+  return { n, under, reports: counted.length };
+}
+
+/**
+ * Finds dryers that leave clothes damp at Medium/High much more often than the other dryers in the room,
+ * i.e. likely a vent, sensor or heater problem worth a WASH service request rather than a setting tweak.
+ * Conservative on purpose: needs ≥3 reports on the dryer and ≥4 (decayed) reports from its siblings.
+ */
+export function detectWeakDryers(dryers: { id: string; reports: ReportInput[] }[], now: number): Map<string, WeakDryer> {
+  const tallies = dryers.map((d) => ({ id: d.id, ...dryingTally(d.reports, now) }));
+  const out = new Map<string, WeakDryer>();
+  for (const t of tallies) {
+    if (t.reports < 3 || t.n <= 0) continue;
+    const others = tallies.filter((o) => o.id !== t.id);
+    const sn = others.reduce((a, o) => a + o.n, 0);
+    const su = others.reduce((a, o) => a + o.under, 0);
+    if (others.filter((o) => o.reports > 0).length < 2 || sn < 4) continue;
+    const rate = t.under / t.n;
+    const siblingRate = su / sn;
+    if (rate >= 0.45 && siblingRate <= 0.25 && rate - siblingRate >= 0.3) out.set(t.id, { rate, siblingRate, reports: t.reports });
+  }
+  return out;
+}

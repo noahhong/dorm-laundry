@@ -13,7 +13,7 @@ export function MachineCard({ m, now, index = 0 }: { m: MachineView; now: number
   if (s.level === "unknown") {
     line = s.staleHint ? `Last: ${OUTCOME_LABEL[s.staleHint.outcome] ?? s.staleHint.outcome} · ${timeAgo(s.staleHint.at, now)}` : "No reports yet";
   } else {
-    line = `${s.reason ?? STATUS_LABEL[s.level]}${ago ? ` · ${ago}` : ""}`;
+    line = `${s.reason ?? STATUS_LABEL[s.level]}${m.weak && !s.reason ? " · slow to dry" : ""}${ago ? ` · ${ago}` : ""}`;
   }
   return (
     <li className="animate-fade-up list-none" style={{ ["--i" as string]: index }}>

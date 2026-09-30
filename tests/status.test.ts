@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRoomFallback, computeStatus, recommendSetting, type MachineInput, type ReportInput } from "../src/lib/status";
+import { applyRoomFallback, computeStatus, detectWeakDryers, recommendSetting, type MachineInput, type ReportInput } from "../src/lib/status";
 
 const NOW = Date.UTC(2026, 8, 30, 12);
 const H = 3_600_000;
@@ -164,5 +164,37 @@ describe("applyRoomFallback", () => {
 
   it("needs at least two informed siblings", () => {
     expect(applyRoomFallback([dry("low"), none()])[1].basis).toBe("default");
+  });
+});
+
+describe("detectWeakDryers", () => {
+  const many = (n: number, outcome: string, setting = "medium") => Array.from({ length: n }, () => rep({ ago: D, outcome, setting }));
+  const good = (id: string) => ({ id, reports: many(4, "dry") });
+
+  it("flags a dryer that is often damp at Medium/High when its siblings dry fine", () => {
+    const weak = { id: "weak", reports: [...many(2, "wet"), ...many(1, "damp", "high"), ...many(1, "dry")] };
+    const out = detectWeakDryers([weak, good("a"), good("b")], NOW);
+    expect([...out.keys()]).toEqual(["weak"]);
+    expect(out.get("weak")!.rate).toBeGreaterThan(0.5);
+    expect(out.get("weak")!.siblingRate).toBeLessThan(0.1);
+  });
+
+  it("does not flag when the whole room is weak (that's the room, not the machine)", () => {
+    const bad = (id: string) => ({ id, reports: many(4, "wet") });
+    expect(detectWeakDryers([bad("a"), bad("b"), bad("c")], NOW).size).toBe(0);
+  });
+
+  it("needs enough evidence: 3 reports on the dryer and 2+ informed siblings", () => {
+    const few = { id: "few", reports: many(2, "wet") };
+    expect(detectWeakDryers([few, good("a"), good("b")], NOW).size).toBe(0);
+    const weak = { id: "weak", reports: many(4, "wet") };
+    expect(detectWeakDryers([weak, good("a")], NOW).size).toBe(0);
+  });
+
+  it("ignores Low/Delicates (damp there is expected) and dedupes one device spamming", () => {
+    const lowOnly = { id: "low", reports: many(5, "wet", "low") };
+    expect(detectWeakDryers([lowOnly, good("a"), good("b")], NOW).size).toBe(0);
+    const spam = { id: "spam", reports: Array.from({ length: 6 }, (_, i) => rep({ ago: i * H, outcome: "wet", setting: "medium", deviceHash: "one" })) };
+    expect(detectWeakDryers([spam, good("a"), good("b")], NOW).size).toBe(0);
   });
 });

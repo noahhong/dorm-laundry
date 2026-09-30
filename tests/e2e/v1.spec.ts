@@ -33,3 +33,14 @@ test("a dryer with no reports borrows the room's consensus setting", async ({ pa
   await expect(best.getByText("Try Medium")).toBeVisible();
   await expect(best.getByText(/No reports for this dryer yet\. The other \d dryers here range Low–High/)).toBeVisible();
 });
+
+test("a dryer that dries much worse than its room-mates is flagged with a WASH service link", async ({ page }) => {
+  await page.goto("/m/hsd4");
+  const banner = page.getByRole("region", { name: "Dries worse than the other dryers here" });
+  await expect(banner).toBeVisible();
+  await expect(banner.getByRole("link", { name: /Report to WASH/ })).toHaveAttribute("href", /wash\.com\/service-request/);
+  await page.goto("/m/hsd1");
+  await expect(page.getByText("Dries worse than the other dryers here")).toBeHidden();
+  await page.goto("/b/hedrick-summit/laundry");
+  await expect(page.getByRole("link", { name: /^Dryer 4, .*/ })).toContainText("Weak heat");
+});
