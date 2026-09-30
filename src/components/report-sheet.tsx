@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { submitReport, undoReport } from "@/app/actions";
 import {
+  DAMAGE_KINDS,
+  DAMAGE_LABEL,
   DRYER_OUTCOMES,
   DRYER_SETTINGS,
   FABRICS,
@@ -18,8 +20,9 @@ import {
   type MachineKind,
 } from "@/lib/labels";
 import { parseLoad, readLoadRaw, subscribeLoad } from "@/lib/load-store";
+import { shrinkPhoto } from "@/lib/photo-client";
 import type { StatusLevel } from "@/lib/status";
-import { CheckIcon, DropIcon, DropletsIcon, FlameIcon, ScissorsIcon, SparkleIcon, StatusIcon, SunIcon, XIcon, ChevronLeft } from "./icons";
+import { CameraIcon, CheckIcon, DropIcon, DropletsIcon, FlameIcon, ScissorsIcon, SparkleIcon, StatusIcon, SunIcon, XIcon, ChevronLeft } from "./icons";
 
 type Props = {
   machine: { code: string; label: string; kind: MachineKind; level: StatusLevel; reason: string | null };
@@ -28,6 +31,8 @@ type Props = {
   turnstileSiteKey?: string;
   /** Dryer settings this room's dryers have (coolest first); the sheet offers exactly these. */
   dryerSettings?: readonly string[];
+  /** Offer the optional load photo (admin setting). */
+  photosEnabled?: boolean;
 };
 
 type Tone = "works" | "caution" | "broken";
@@ -64,7 +69,7 @@ function writeLast(kind: MachineKind, v: string) {
   } catch {}
 }
 
-export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey, dryerSettings }: Props) {
+export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey, dryerSettings, photosEnabled = false }: Props) {
   const [open, setOpen] = useState(autoOpen);
   const [toast, setToast] = useState<{ text: string; id?: string; tone: "ok" | "err" } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -116,6 +121,7 @@ export function ReportSheet({ machine, autoOpen = false, turnstileSiteKey, dryer
           machine={machine}
           turnstileSiteKey={turnstileSiteKey}
           dryerSettings={dryerSettings}
+          photosEnabled={photosEnabled}
           onClose={close}
           onDone={(id) => {
             close();
@@ -154,12 +160,14 @@ function Sheet({
   machine,
   turnstileSiteKey,
   dryerSettings,
+  photosEnabled,
   onClose,
   onDone,
 }: {
   machine: Props["machine"];
   turnstileSiteKey?: string;
   dryerSettings?: readonly string[];
+  photosEnabled?: boolean;
   onClose: () => void;
   onDone: (id: string) => void;
 }) {
@@ -179,6 +187,10 @@ function Sheet({
   const loadSize = loadSizePick === undefined ? storedLoad.size : loadSizePick;
   const fabrics: string[] = fabricsPick ?? [...storedLoad.fabrics];
   const [errorCode, setErrorCode] = useState("");
+  const [damagedItems, setDamagedItems] = useState<string[]>([]);
+  const [damageKinds, setDamageKinds] = useState<string[]>([]);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoState, setPhotoState] = useState<"idle" | "working" | "error">("idle");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -253,6 +265,9 @@ function Sheet({
         minutes: minutes ? Number(minutes) : null,
         loadSize: loadSize as never,
         fabrics: fabrics.length ? (fabrics as never) : null,
+        damagedItems: outcome === "damaged" && damagedItems.length ? (damagedItems as never) : null,
+        damageKinds: outcome === "damaged" && damageKinds.length ? (damageKinds as never) : null,
+        photo: outcome !== "not_working" ? photo : null,
         errorCode: errorCode || null,
         note: note || null,
         website: (panelRef.current?.querySelector<HTMLInputElement>('input[name="website"]')?.value ?? "") || undefined,
@@ -392,42 +407,90 @@ function Sheet({
                   </div>
                 </fieldset>
               ) : (
-                <fieldset>
-                  <legend className="mb-2 text-label font-semibold text-text-2">
-                    {isDryer ? "Which setting did you use?" : "Water temperature (optional)"}
-                  </legend>
-                  <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(min-content, 1fr))` }}
-                    className="grid gap-1 rounded-[14px] bg-surface-2 p-1">
-                    {settings.map((s, i) => (
-                      <button
-                        key={s}
-                        type="button"
-                        role="radio"
-                        aria-checked={setting === s}
-                        aria-label={SETTING_LABEL[s]}
-                        data-autofocus={i === 0 ? true : undefined}
-                        onClick={() => setSetting(setting === s && !isDryer ? null : s)}
-                        className={`pressable relative h-12 rounded-[10px] px-0.5 text-[13px] font-semibold leading-tight ${
-                          setting === s ? "bg-accent text-accent-fg shadow-e1" : "text-text-2 hover:bg-surface"
-                        }`}
-                      >
-                        {SETTING_LABEL[s].replace("Delicates", "Delicate").replace("Medium", "Med")}
-                        {lastSetting === s && setting !== s && (
-                          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" aria-label="(used last time)" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  {lastSetting && isDryer && !setting && (
-                    <p className="mt-1.5 text-caption text-text-3">Dot = what you used last time</p>
+                <>
+                  <fieldset>
+                    <legend className="mb-2 text-label font-semibold text-text-2">
+                      {isDryer ? "Which setting did you use?" : "Water temperature (optional)"}
+                    </legend>
+                    <div role="radiogroup" aria-label="Setting" style={{ gridTemplateColumns: `repeat(${settings.length}, minmax(min-content, 1fr))` }}
+                      className="grid gap-1 rounded-[14px] bg-surface-2 p-1">
+                      {settings.map((s, i) => (
+                        <button
+                          key={s}
+                          type="button"
+                          role="radio"
+                          aria-checked={setting === s}
+                          aria-label={SETTING_LABEL[s]}
+                          data-autofocus={i === 0 ? true : undefined}
+                          onClick={() => setSetting(setting === s && !isDryer ? null : s)}
+                          className={`pressable relative h-12 rounded-[10px] px-0.5 text-[13px] font-semibold leading-tight ${
+                            setting === s ? "bg-accent text-accent-fg shadow-e1" : "text-text-2 hover:bg-surface"
+                          }`}
+                        >
+                          {SETTING_LABEL[s].replace("Delicates", "Delicate").replace("Medium", "Med")}
+                          {lastSetting === s && setting !== s && (
+                            <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" aria-label="(used last time)" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {lastSetting && isDryer && !setting && (
+                      <p className="mt-1.5 text-caption text-text-3">Dot = what you used last time</p>
+                    )}
+                    {!more && (fabrics.length > 0 || loadSize) && (
+                      <p className="mt-1.5 text-caption text-text-3">
+                        Your load ({[loadSize ? `${LOAD_SIZE_LABEL[loadSize]} load` : null, ...fabrics.map((f) => FABRIC_LABEL[f])].filter(Boolean).join(" · ")}) is
+                        included. Change it in More details.
+                      </p>
+                    )}
+                  </fieldset>
+                  {outcome === "damaged" && (
+                    <>
+                      <ChipGroup label="What got damaged? (pick any)" options={FABRICS} labels={FABRIC_LABEL} value={damagedItems} onChange={setDamagedItems} />
+                      <ChipGroup label="How? (pick any)" options={DAMAGE_KINDS} labels={DAMAGE_LABEL} value={damageKinds} onChange={setDamageKinds} />
+                    </>
                   )}
-                  {!more && (fabrics.length > 0 || loadSize) && (
-                    <p className="mt-1.5 text-caption text-text-3">
-                      Your load ({[loadSize ? `${LOAD_SIZE_LABEL[loadSize]} load` : null, ...fabrics.map((f) => FABRIC_LABEL[f])].filter(Boolean).join(" · ")}) is
-                      included. Change it in More details.
-                    </p>
+                  {photosEnabled && (
+                    <div>
+                      {photo ? (
+                        <div className="flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- local preview of a data URL */}
+                          <img src={photo} alt="Your load photo" className="h-16 w-16 rounded-[10px] border border-border object-cover" />
+                          <button type="button" onClick={() => setPhoto(null)} className="h-11 text-label font-semibold text-accent">
+                            Remove photo
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="pressable flex h-12 cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-dashed border-border-strong/60 text-label font-semibold text-text-2 hover:bg-surface-2">
+                          <CameraIcon size={18} />
+                          {photoState === "working" ? "Adding photo…" : "Add a photo of your load (optional)"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="sr-only"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!file) return;
+                              setPhotoState("working");
+                              try {
+                                setPhoto(await shrinkPhoto(file));
+                                setPhotoState("idle");
+                              } catch {
+                                setPhotoState("error");
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                      {photoState === "error" && <p className="mt-1 text-caption font-semibold text-broken-fg">Couldn&apos;t read that photo. Try another, or skip it.</p>}
+                      {!photo && photoState !== "error" && (
+                        <p className="mt-1 text-caption text-text-3">Shows how full the drum was. Location data is removed.</p>
+                      )}
+                    </div>
                   )}
-                </fieldset>
+                </>
               )}
 
               <div>
@@ -599,4 +662,40 @@ function useTurnstile(siteKey?: string) {
       if (widget.current) window.turnstile?.reset(widget.current);
     },
   };
+}
+
+function ChipGroup({
+  label,
+  options,
+  labels,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly string[];
+  labels: Record<string, string>;
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-2 text-label font-semibold text-text-2">{label}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const on = value.includes(o);
+          return (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(on ? value.filter((x) => x !== o) : [...value, o])}
+              className={`pressable h-10 rounded-full border px-3.5 text-label font-semibold ${on ? "border-broken-icon/50 bg-broken-tint text-broken-fg" : "border-border bg-surface text-text-2"}`}
+            >
+              {labels[o] ?? o}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
 }

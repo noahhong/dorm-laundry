@@ -10,7 +10,7 @@ import { RunTimer } from "@/components/run-timer";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
 import { toFabricRules } from "@/lib/config";
 import { isoTime, plural, timeAgo } from "@/lib/format";
-import { FABRIC_LABEL, LOAD_SIZE_LABEL, OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
+import { damageSummary, loadSummary, OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, WASH_LINKS } from "@/lib/labels";
 import { pushPublicKey } from "@/lib/push";
 import { canWatch } from "@/lib/push-rules";
 import { getMachine, type PublicReport } from "@/lib/queries";
@@ -40,7 +40,8 @@ function ReportRow({ r, kind, now }: { r: PublicReport; kind: "washer" | "dryer"
     OUTCOME_LABEL[r.outcome] ?? r.outcome,
     r.minutes ? `${r.minutes} min` : null,
   ].filter(Boolean);
-  const load = [r.loadSize ? `${LOAD_SIZE_LABEL[r.loadSize] ?? r.loadSize} load` : null, ...(r.fabrics ?? []).map((f) => FABRIC_LABEL[f] ?? f)].filter(Boolean);
+  const load = loadSummary(r);
+  const damage = damageSummary(r);
   return (
     <li className="flex gap-3 py-3">
       <StatusIcon level={level} size={18} className={`mt-0.5 shrink-0 ${TONE[level].icon}`} />
@@ -52,9 +53,16 @@ function ReportRow({ r, kind, now }: { r: PublicReport; kind: "washer" | "dryer"
           </time>
         </div>
         {r.symptoms.length > 0 && <p className="text-label text-text-2">{r.symptoms.map((s) => SYMPTOM_LABEL[s] ?? s).join(", ")}</p>}
-        {load.length > 0 && <p className="text-label text-text-2">{load.join(" · ")}</p>}
+        {damage && <p className="text-label font-medium text-broken-fg">{damage}</p>}
+        {load && <p className="text-label text-text-2">{load}</p>}
         {r.errorCode && <p className="text-label text-text-2">Error code {r.errorCode}</p>}
         {r.note && <p className="mt-0.5 break-words text-label text-text-2">&ldquo;{r.note}&rdquo;</p>}
+        {r.hasPhoto && (
+          <a href={`/api/photos/${r.id}`} target="_blank" rel="noopener noreferrer" className="mt-1.5 block w-fit" aria-label="Open photo of the load">
+            {/* eslint-disable-next-line @next/next/no-img-element -- small DB-served JPEG, no optimizer needed */}
+            <img src={`/api/photos/${r.id}`} alt="Photo of the load" loading="lazy" className="h-20 w-20 rounded-[10px] border border-border object-cover" />
+          </a>
+        )}
       </div>
     </li>
   );
@@ -267,6 +275,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
           autoOpen={sp.r === "1"}
           turnstileSiteKey={turnstileSiteKey()}
           dryerSettings={machine.kind === "dryer" ? data.offered : undefined}
+          photosEnabled={data.config.photosEnabled}
         />
       )}
     </Page>

@@ -132,6 +132,62 @@ test("per-room dryer settings limit what residents can report and get recommende
   }
 });
 
+test("a damaged-clothes report records what got damaged, how, and a load photo that only admins see", async ({ page, context }) => {
+  await login(page);
+  await page.goto("/admin/rooms");
+  await page.getByRole("link", { name: /Laundry room/ }).first().click();
+  await page.getByLabel("Kind").selectOption("washer");
+  await page.getByLabel("Label prefix").fill("Washer");
+  await page.getByLabel("From #").fill("7");
+  await page.getByLabel("To #").fill("7");
+  await page.getByRole("button", { name: "Add machines" }).click();
+  await expect(page.getByText("Added 1 washer.")).toBeVisible();
+  const href = (await page.getByRole("link", { name: /^\/m\// }).last().getAttribute("href"))!;
+
+  const resident = await context.browser()!.newContext({ baseURL: "http://localhost:3100", viewport: { width: 390, height: 800 } });
+  const p = await resident.newPage();
+  await p.goto(`${href}?r=1`);
+  await p.waitForTimeout(900);
+  const sheet = p.getByRole("dialog");
+  await sheet.getByRole("radio", { name: /Damaged clothes/ }).click();
+  await sheet.getByRole("button", { name: "Graphic tees" }).click();
+  await sheet.getByRole("button", { name: "Colors bled" }).click();
+
+  // A real camera photo is large; the sheet shrinks it to a small JPEG before upload.
+  const png = await p.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 3000;
+    c.height = 2000;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#3a6";
+    ctx.fillRect(0, 0, 3000, 2000);
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  await sheet.getByLabel(/Add a photo of your load/).setInputFiles({ name: "load.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect(sheet.getByRole("img", { name: "Your load photo" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Submit report" }).click();
+  await expect(p.getByRole("status").getByText(/report saved/)).toBeVisible();
+
+  // Residents see the damage, but not the photo (photos are admin-only by default).
+  await p.reload();
+  const recent = p.getByRole("region", { name: "Recent reports" });
+  await expect(recent.getByText("Damaged: Graphic tees (Colors bled)")).toBeVisible();
+  await expect(recent.getByRole("img")).toHaveCount(0);
+  await expect(p.getByRole("region", { name: "Status" })).toContainText("Damaged clothes");
+
+  await page.goto("/admin/reports");
+  const row = page.getByRole("row").filter({ hasText: "Damaged: Graphic tees (Colors bled)" });
+  const img = row.getByRole("img", { name: "Load photo" });
+  await expect(img).toBeVisible();
+  const src = (await img.getAttribute("src"))!;
+  const asAdmin = await page.request.get(src);
+  expect(asAdmin.status()).toBe(200);
+  expect(asAdmin.headers()["content-type"]).toBe("image/jpeg");
+  expect((await asAdmin.body()).length).toBeLessThan(400_000);
+  expect((await resident.request.get(src)).status()).toBe(404);
+  await resident.close();
+});
+
 test("reports can be searched, hidden, unhidden and exported; export needs admin", async ({ page, playwright, baseURL }) => {
   await login(page);
   await page.goto("/admin/reports?q=Gym+shorts");

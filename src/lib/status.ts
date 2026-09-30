@@ -116,6 +116,7 @@ export function statusEvidence(kind: MachineKind, r: Pick<ReportInput, "outcome"
     case "too_hot":
       return { broken: 0, caution: high ? 0.3 : 0.6, ok: 0, reason: "runs_hot" };
     case "damaged":
+      if (kind === "washer") return { broken: 0, caution: 1, ok: 0, reason: "damages_clothes" };
       return { broken: 0, caution: high ? 0.5 : 1, ok: 0, reason: "runs_hot" };
     case "soaking":
       return { broken: 0, caution: 1, ok: 0, reason: "no_spin" };
@@ -133,6 +134,7 @@ export const REASON_LABEL: Record<string, string> = {
   runs_hot: "Runs hot",
   no_spin: "Doesn't spin",
   dirty: "Doesn't clean well",
+  damages_clothes: "Damaged clothes",
   mixed: "Mixed reports",
   unconfirmed: "Reported broken, not yet confirmed",
   took_money: "Takes money",

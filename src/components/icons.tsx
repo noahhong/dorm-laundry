@@ -165,3 +165,9 @@ export const ClockIcon = ({ size = 16, ...p }: P) => (
     <path d="M12 7v5l3 2" />
   </svg>
 );
+export const CameraIcon = ({ size = 18, ...p }: P) => (
+  <svg {...base(size, p)}>
+    <path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
