@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { buildings, machines, reports, rooms, type Machine, type Report } from "./db/schema";
-import { computeStatus, recommendSetting, WINDOW, type MachineStatus, type Recommendation } from "./status";
+import { applyRoomFallback, computeStatus, recommendSetting, WINDOW, type MachineStatus, type Recommendation } from "./status";
 
 export interface MachineView {
   id: string;
@@ -65,7 +65,16 @@ async function machinesForRoom(roomId: string, now: number, { includeRetired = f
     ms.map((m) => m.id),
     now,
   );
-  return ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now), retiredAt: m.retiredAt, position: m.position }));
+  const views = ms.map((m) => ({ ...toView(m, rs.get(m.id) ?? [], now), retiredAt: m.retiredAt, position: m.position }));
+  return withRoomFallback(views);
+}
+
+/** Dryers with no setting data borrow the room's consensus (retired machines don't vote). */
+function withRoomFallback<T extends MachineView & { retiredAt: number | null }>(views: T[]): T[] {
+  const dryers = views.filter((v) => v.kind === "dryer" && v.recommendation && v.retiredAt == null);
+  const recs = applyRoomFallback(dryers.map((d) => d.recommendation!));
+  const byId = new Map(dryers.map((d, i) => [d.id, recs[i]]));
+  return views.map((v) => (byId.has(v.id) ? { ...v, recommendation: byId.get(v.id)! } : v));
 }
 
 export async function getRoom(buildingSlug: string, roomSlug: string, now = Date.now()) {
@@ -107,7 +116,11 @@ export async function getMachine(code: string, now = Date.now()) {
     .limit(1);
   if (!row) return null;
   const rs = (await reportsFor([row.machine.id], now)).get(row.machine.id) ?? [];
-  const view = toView(row.machine, rs, now);
+  let view = toView(row.machine, rs, now);
+  if (view.recommendation?.basis === "default") {
+    const siblings = await machinesForRoom(row.room.id, now);
+    view = { ...view, recommendation: siblings.find((m) => m.id === view.id)?.recommendation ?? view.recommendation };
+  }
   const recent: PublicReport[] = [...rs]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 20)
