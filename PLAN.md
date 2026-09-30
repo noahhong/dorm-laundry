@@ -225,14 +225,14 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 
 ### v1 (next)
 - Optional **school-email magic link** (Better Auth + Resend) for a trust boost and "my reports".
-- Cloudflare **Turnstile** on report submit (invisible), turned on when spam appears.
+- ✅ Cloudflare **Turnstile** on report submit (invisible), turned on by setting two env vars.
 - **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring.
 - **Notify me** when a broken machine is marked fixed (Web Push via PWA).
 - **Fabric-aware tips** ("Athletic wear? Use Low on this machine").
-- Room-level fallback recommendation ("No data for D4 yet; most dryers here: Medium").
+- ✅ Room-level fallback recommendation (§6.4).
 - Outlier detection: "D3 is much weaker than other dryers here — report to WASH" with a pre-filled service request.
-- PWA manifest + add-to-home-screen; favorite room.
-- Manual theme toggle; Spanish / Chinese / Korean i18n.
+- ✅ PWA manifest + add-to-home-screen. Still to do: favorite room.
+- ✅ Manual theme toggle (Auto / Light / Dark). Still to do: Spanish / Chinese / Korean i18n.
 - Admin: moderation queue for flagged reports, CSV export, report counts over time.
 
 ### Later
@@ -407,7 +407,18 @@ confidence = Σ n near best: <1 low, <3 medium, else high
 - **The prior** keeps a single report from producing a "high confidence" recommendation.
 - It is **explainable**: the machine page shows the heat ladder with counts per setting, so students can see *why*.
 
-### 6.4 Washers
+### 6.4 Room fallback for untested dryers *(added in v1)*
+A dryer with no setting reports borrows from its siblings in the same room, so a new or unpopular dryer doesn't just say "Try Medium":
+
+```
+informed = sibling dryers whose recommendation is report-based with confidence ≥ low
+if |informed| ≥ 2:
+    suggest the LOWER median of their settings (cooler pick when the room is split)
+    show the range: "The other 4 dryers here range Low–High; start in the middle."
+```
+The lower median, not the majority, keeps the safety-first rule: an untested dryer may be the one that runs hot. Retired machines don't vote. Implemented in `applyRoomFallback` (`src/lib/status.ts`).
+
+### 6.5 Washers
 Status only. Washer settings are recorded (hot/warm/cold) but not recommended in the MVP.
 
 ---
