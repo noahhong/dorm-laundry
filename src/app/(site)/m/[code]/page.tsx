@@ -6,6 +6,7 @@ import { AlertIcon, DryerIcon, ExternalIcon, StatusIcon, ThermometerIcon, Washer
 import { LoadAdvice } from "@/components/load-advice";
 import { NotifyFixed } from "@/components/notify-fixed";
 import { ReportSheet } from "@/components/report-sheet";
+import { RunTimer } from "@/components/run-timer";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
 import { toFabricRules } from "@/lib/config";
 import { isoTime, plural, timeAgo } from "@/lib/format";
@@ -126,6 +127,10 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
         </div>
       </section>
 
+      {/* "I started it" timer */}
+      {!data.retired && machine.adminState !== "out_of_order" && (
+        <RunTimer code={machine.code} kind={machine.kind} inUse={view.inUse} defaultMinutes={data.runMinutes} serverNow={now} />
+      )}
       {pushKey && !data.retired && canWatch(s.level) && <NotifyFixed code={machine.code} label={machine.label} publicKey={pushKey} />}
 
       {/* Outlier: this dryer is much weaker than its room-mates */}

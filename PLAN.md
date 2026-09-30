@@ -226,7 +226,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 ### v1 (next)
 - Optional **school-email magic link** (Better Auth + Resend) for a trust boost and "my reports".
 - ✅ Cloudflare **Turnstile** on report submit (invisible), turned on by setting two env vars.
-- **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring.
+- ✅ **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring. Pre-fills the room's minutes per payment (dryers) or a site-wide default; the newest tap wins; reporting how it went, or "Stop timer", ends your own. Stored in `machine_runs`; logic is `currentRun` in `src/lib/status.ts`.
 - ✅ **Notify me** when a broken machine is marked fixed (Web Push via PWA, §17).
 - ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7). Still to do: learn per-fabric settings from the recorded fabrics.
 - ✅ Room-level fallback recommendation (§6.4).
@@ -926,6 +926,7 @@ Nothing the owner might want to change is hard-coded any more.
 | Dryer settings | setting half-life; per room: which settings exist, minutes per payment |
 | Load advice | on/off; per fabric: hottest dryer setting and hottest wash water (§6.7) |
 | Weak-dryer detection | on/off, reports needed, damp share, sibling damp share, gap |
+| "I started it" timer | default washer and dryer cycle length, how long "should be done" shows after the estimate |
 | Abuse | per-machine cooldown, reports per device/day, per network/day, minimum fill time, undo window |
 
 **Broken quorum.** This resolves open question 9 without forcing a choice: the default stays at 1 (fast warnings); setting it to 2 means a single script can no longer mark a machine Broken, and admins can still mark out of order directly. The quorum counts distinct devices, so one phone can't satisfy it twice.

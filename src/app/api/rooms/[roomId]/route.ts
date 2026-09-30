@@ -15,6 +15,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/rooms/[roomId]"
         label: m.label,
         kind: m.kind,
         status: m.status,
+        inUse: m.inUse && { state: m.inUse.state, startedAt: m.inUse.startedAt, endsAt: m.inUse.endsAt },
         recommendation: m.recommendation && { setting: m.recommendation.setting, basis: m.recommendation.basis, confidence: m.recommendation.confidence, tips: m.recommendation.tips, avoid: m.recommendation.avoid },
       })),
     },

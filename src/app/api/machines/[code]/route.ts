@@ -13,6 +13,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/machines/[code]
       room: { id: room.id, slug: room.slug, name: room.name },
       machine: { code: view.code, label: view.label, kind: view.kind, washMachineNumber: view.washMachineNumber },
       status: view.status,
+      inUse: view.inUse && { state: view.inUse.state, startedAt: view.inUse.startedAt, endsAt: view.inUse.endsAt },
       recommendation: view.recommendation,
       recentReports: recent,
     },

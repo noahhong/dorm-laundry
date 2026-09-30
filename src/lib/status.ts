@@ -77,6 +77,8 @@ export interface Params {
   /** Distinct devices that must say "broken" before the machine shows Broken (otherwise: Caution, unconfirmed). */
   brokenMinReporters: number;
   outlier: { enabled: boolean; minReports: number; rate: number; siblingRate: number; gap: number };
+  /** "I started it" timer: default cycle lengths, and how long past the estimate a machine still shows as finishing. */
+  run: { washerMinutes: number; dryerMinutes: number; graceMs: number };
 }
 
 export const DEFAULT_PARAMS: Params = {
@@ -86,6 +88,7 @@ export const DEFAULT_PARAMS: Params = {
   newestBoost: 1.5,
   brokenMinReporters: 1,
   outlier: { enabled: true, minReports: 3, rate: 0.45, siblingRate: 0.25, gap: 0.3 },
+  run: { washerMinutes: 35, dryerMinutes: 45, graceMs: 15 * 60_000 },
 };
 
 const decay = (age: number, halfLife: number) => Math.pow(0.5, Math.max(0, age) / halfLife);
@@ -451,4 +454,50 @@ export function detectWeakDryers(
     if (rate >= o.rate && siblingRate <= o.siblingRate && rate - siblingRate >= o.gap) out.set(t.id, { rate, siblingRate, reports: t.reports });
   }
   return out;
+}
+
+export interface RunInput {
+  id: string;
+  startedAt: number;
+  endsAt: number;
+  endedAt: number | null;
+  deviceHash: string;
+}
+
+export interface InUse {
+  /** "running": before the estimate. "finishing": past it but within the grace period, so clothes may still be inside. */
+  state: "running" | "finishing";
+  runId: string;
+  startedAt: number;
+  endsAt: number;
+  /** When it stops showing at all (the estimate plus the grace period). */
+  expiresAt: number;
+  /** Whether the viewer's own device started it (they can cancel it). */
+  mine: boolean;
+}
+
+/**
+ * Crowdsourced free/busy from "I started it" taps. Only the newest run counts: starting a machine
+ * replaces whatever was there before, and a cancelled newest run means nobody claims the machine.
+ * Runs expire on their own `grace` after the estimate, so a forgotten tap can't block a machine.
+ */
+export function currentRun(runs: RunInput[], now: number, params: Params = DEFAULT_PARAMS, viewerDevice: string | null = null): InUse | null {
+  let newest: RunInput | null = null;
+  for (const r of runs) if (r.startedAt <= now && (!newest || r.startedAt > newest.startedAt)) newest = r;
+  if (!newest || (newest.endedAt != null && newest.endedAt <= now)) return null;
+  if (now >= newest.endsAt + params.run.graceMs) return null;
+  return {
+    state: now < newest.endsAt ? "running" : "finishing",
+    runId: newest.id,
+    startedAt: newest.startedAt,
+    endsAt: newest.endsAt,
+    expiresAt: newest.endsAt + params.run.graceMs,
+    mine: viewerDevice != null && newest.deviceHash === viewerDevice,
+  };
+}
+
+/** Minutes to pre-fill in the timer: the room's paid dryer cycle if the admin set one, else the site-wide default. */
+export function defaultRunMinutes(kind: MachineKind, roomMinutesPerCycle: number | null, params: Params = DEFAULT_PARAMS): number {
+  if (kind === "dryer") return roomMinutesPerCycle && roomMinutesPerCycle > 0 ? roomMinutesPerCycle : params.run.dryerMinutes;
+  return params.run.washerMinutes;
 }

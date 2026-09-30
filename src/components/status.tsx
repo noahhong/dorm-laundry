@@ -1,4 +1,4 @@
-import type { Confidence, MachineStatus, Recommendation, StatusLevel } from "@/lib/status";
+import type { Confidence, InUse, MachineStatus, Recommendation, StatusLevel } from "@/lib/status";
 import { SETTING_LABEL } from "@/lib/labels";
 import { StatusIcon, ThermometerIcon } from "./icons";
 
@@ -84,8 +84,12 @@ export function SettingChip({ rec, compact = false }: { rec: Recommendation; com
   );
 }
 
-export function statusSentence(label: string, s: MachineStatus, rec: Recommendation | null, ago: string | null) {
+export function statusSentence(label: string, s: MachineStatus, rec: Recommendation | null, ago: string | null, inUse: InUse | null = null, now = 0) {
   const parts = [`${label}, ${STATUS_LABEL[s.level]}${s.reason ? `: ${s.reason}` : ""}`];
+  if (inUse) {
+    const left = Math.max(1, Math.ceil((inUse.endsAt - now) / 60_000));
+    parts.push(inUse.state === "running" ? `in use, about ${left} minute${left === 1 ? "" : "s"} left` : "should be done, clothes may still be inside");
+  }
   if (ago) parts.push(`last report ${ago}`);
   if (rec) {
     if (rec.basis === "reports") parts.push(`recommended ${SETTING_LABEL[rec.setting]}`);

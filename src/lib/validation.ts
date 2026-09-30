@@ -53,3 +53,10 @@ export function checkForKind(
   if (kind === "dryer" && p.outcome !== "not_working" && !p.setting) return "Which setting did you use?";
   return null;
 }
+
+/** "I started it": which machine, and how many minutes the resident says it will run. */
+export const runSchema = z.object({
+  code: z.string().min(4).max(16),
+  minutes: z.number().int().min(5).max(120),
+});
+export type RunPayload = z.input<typeof runSchema>;

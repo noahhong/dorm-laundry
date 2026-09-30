@@ -29,6 +29,7 @@ export const GROUPS = [
   { id: "settings", title: "Dryer settings", blurb: "How reports turn into a recommended dryer setting." },
   { id: "load", title: "Load advice", blurb: "Limits per fabric for “What's in your load?”. A dryer's own learned setting is used unless the load needs something cooler." },
   { id: "outliers", title: "Weak-dryer detection", blurb: "Flags a dryer that dries much worse than its room-mates." },
+  { id: "timer", title: "“I started it” timer", blurb: "Residents tap “I started it” so others can see when a machine should be free." },
   { id: "abuse", title: "Reports & abuse limits", blurb: "Rate limits and spam speed bumps for anonymous reports." },
 ] as const;
 export type GroupId = (typeof GROUPS)[number]["id"];
@@ -68,6 +69,10 @@ export const FIELDS = [
   { key: "outlierRate", group: "outliers", kind: "float", min: 0.2, max: 0.95, step: 0.05, default: 0.45, label: "Damp share to flag", help: "Share of the dryer's Medium/High loads that came out damp or wet (wet counts fully, damp half).", unit: "0–1" },
   { key: "outlierSiblingRate", group: "outliers", kind: "float", min: 0.05, max: 0.6, step: 0.05, default: 0.25, label: "Max damp share of the others", help: "If the rest of the room is also damp this often, it's the room, not the machine, so nothing is flagged.", unit: "0–1" },
   { key: "outlierGap", group: "outliers", kind: "float", min: 0.1, max: 0.8, step: 0.05, default: 0.3, label: "Minimum gap", help: "How much worse than its room-mates the dryer must be.", unit: "0–1" },
+
+  { key: "runWasherMinutes", group: "timer", kind: "int", min: 5, max: 120, step: 1, default: 35, label: "Washer cycle length", help: "Pre-filled when someone starts a washer. They can change it before tapping.", unit: "min" },
+  { key: "runDryerMinutes", group: "timer", kind: "int", min: 5, max: 120, step: 1, default: 45, label: "Dryer cycle length", help: "Pre-filled for dryers in rooms that don't set their own minutes per payment.", unit: "min" },
+  { key: "runGraceMinutes", group: "timer", kind: "int", min: 0, max: 120, step: 1, default: 15, label: "“Should be done” time", help: "After the estimate, the machine shows “should be done” for this long (clothes may still be inside), then shows as free.", unit: "min" },
 
   { key: "rateMachineMinutes", group: "abuse", kind: "int", min: 0, max: 120, step: 1, default: 3, label: "Cooldown per device per machine", help: "A phone can report the same machine once per this many minutes. 0 = no cooldown.", unit: "min" },
   { key: "rateDevicePerDay", group: "abuse", kind: "int", min: 1, max: 500, step: 1, default: 30, label: "Reports per device per day", help: "", unit: "reports" },
@@ -151,6 +156,7 @@ export function toParams(c: Config): Params {
     newestBoost: c.newestBoost,
     brokenMinReporters: c.brokenMinReporters,
     outlier: { enabled: c.outlierEnabled, minReports: c.outlierMinReports, rate: c.outlierRate, siblingRate: c.outlierSiblingRate, gap: c.outlierGap },
+    run: { washerMinutes: c.runWasherMinutes, dryerMinutes: c.runDryerMinutes, graceMs: c.runGraceMinutes * 60_000 },
   };
 }
 
