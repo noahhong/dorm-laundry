@@ -4,7 +4,8 @@ import { and, eq, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { buildings, machines, reports, rooms } from "@/lib/db/schema";
-import { checkRateLimit, deviceHash, ipHash } from "@/lib/device";
+import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
+import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
 import { checkForKind, reportSchema, type ReportPayload } from "@/lib/validation";
 
@@ -30,6 +31,9 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
   const p = parsed.data;
   // Bots: pretend success so they don't retry, but store nothing.
   if (p.website || (p.elapsedMs !== undefined && p.elapsedMs < 800)) return { ok: true, id: "ignored" };
+  if (turnstileEnabled() && !(await verifyTurnstile(p.turnstileToken, await clientIp()))) {
+    return { ok: false, error: "Couldn't confirm you're human. Wait a second and try again." };
+  }
 
   const db = getDb();
   const [machine] = await db.select().from(machines).where(eq(machines.code, p.code)).limit(1);
