@@ -41,6 +41,7 @@ npm run dev                       # http://localhost:3000
 - Machine pages are at `/m/<code>`. The seed uses readable codes: `hsd1`–`hsd6` for dryers and `hsw1`–`hsw4` for washers. Try `/m/hsd2?r=1` to see what a QR scan opens.
 - Students can add the site to their home screen (it's a PWA), and switch light/dark/auto with the header toggle.
 - On a broken machine, **Notify me when it's fixed** sends one push notification when it works again (needs the `VAPID_*` keys below).
+- After tapping **I started it**, **Notify me when it's done** sends one push notification when your timer runs out, so you can move your clothes. It needs the same `VAPID_*` keys and a running server (`npm run dev` or `npm start`), which checks for finished timers every 20 seconds.
 - Admin is at `/admin`, using the password from `ADMIN_PASSWORD` (see below).
 
 To reset the demo data, run `npm run db:seed -- --reset`. The seed includes four weeks of past "I started it" timers so busy hours has something to show.
@@ -84,7 +85,7 @@ Settings are stored in the database, not in code, so they survive deploys and ap
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional | Turns on the invisible Cloudflare Turnstile bot check for reports. Both must be set; leave empty to disable. |
 | `ANTHROPIC_API_KEY` | optional | Usually easier to paste the key in **Admin → Settings → Laundry helper API key** instead (stored encrypted). If set here, it wins over the saved one. Without either, the laundry helper chat is hidden. |
 | `ANTHROPIC_MODEL` | optional | The Claude model for the helper. Defaults to `claude-opus-5-5`; `claude-sonnet-5-5` costs about half. |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Turns on "Notify me when it's fixed" (Web Push). Generate once with `npx web-push generate-vapid-keys`; both must be set. Changing them drops every pending alert. |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Turns on "Notify me when it's fixed" and "Notify me when it's done" (Web Push). Generate once with `npx web-push generate-vapid-keys`; both must be set. Changing them drops every pending alert. |
 | `VAPID_SUBJECT` | optional | Contact the push services can reach you at: `mailto:you@example.com` or your `https://` site. Defaults to `PUBLIC_BASE_URL`. |
 
 ## Deploy (Vercel + Turso, both free tiers)
@@ -109,7 +110,7 @@ Settings are stored in the database, not in code, so they survive deploys and ap
    - In Project → Settings → Functions, pick the region closest to your Turso database (e.g. `sfo1` for `lax`).
 4. **Custom domain** (optional). Set `PUBLIC_BASE_URL` to it **before** printing QR codes, so stickers never point at a preview URL.
 5. (Optional) If spam shows up, create a free Turnstile widget in the Cloudflare dashboard for your domain and set both `TURNSTILE_*` variables.
-   (Optional) For "Notify me when it's fixed", run `npx web-push generate-vapid-keys` once and set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. On iPhone, residents must add the site to their Home Screen first (iOS 16.4+); the page tells them how.
+   (Optional) For "Notify me when it's fixed" and "when it's done", run `npx web-push generate-vapid-keys` once and set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. On iPhone, residents must add the site to their Home Screen first (iOS 16.4+); the page tells them how.
 6. Run `npm run preflight` with the same variables to confirm everything is set, then check `https://your-domain/api/health` returns `{"ok":true}` after the deploy.
 7. Open `/admin`, then **Settings** to set your site name and rules, and **Rooms & machines** to add your rooms and tick the dryer settings they have. Label machines to match their physical numbers. Then open **Print QR sheet**, print at 100% on US Letter, cut, and stick one near each machine's controls.
 
@@ -130,7 +131,8 @@ src/lib/assistant*.ts    the laundry helper: prompt, plan_load tool and ranking 
 src/lib/labels.ts        enums, human copy, WASH help links
 src/lib/queries.ts       DB loaders that attach computed status
 src/lib/device.ts        anonymous device cookie, hashed IP, rate limits
-src/lib/push*.ts         "notify me when it's fixed": rules (pure) and sending (web-push)
+src/lib/push*.ts         "notify me when it's fixed / done": rules (pure), sending (web-push) and browser subscribe
+src/lib/run-alerts.ts    sends "should be done" alerts; swept every 20 s from src/instrumentation.ts
 public/sw.js             service worker that shows those notifications (no caching)
 drizzle/                 SQL migrations
 scripts/                 migrate and seed

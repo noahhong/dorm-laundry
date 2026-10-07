@@ -1,3 +1,4 @@
+import { createClient } from "@libsql/client";
 import { expect, test } from "@playwright/test";
 
 // Headless Chromium can't reach a real push service, so the browser's PushManager is faked with an FCM-shaped
@@ -72,6 +73,42 @@ test("a resident asks to be told when a broken washer is fixed, and an admin's M
   await page.reload();
   await expect(page.getByRole("region", { name: "Status" }).getByText("Broken", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Notify me when it's fixed|Cancel notification/ })).toHaveCount(0);
+});
+
+test("the starter of a timer asks to be told when it's done, and gets one alert when it runs out", async ({ page }) => {
+  // Washer 4: admin.spec puts Washer 1 out of order, and no earlier spec touches this one.
+  await page.goto("/m/hsw4");
+  const timer = page.getByRole("region", { name: "Using it now?" });
+  // Only the starter's own running timer offers it.
+  await expect(timer.getByRole("button", { name: "Notify me when it's done" })).toHaveCount(0);
+  await timer.getByRole("button", { name: "I started it" }).click();
+  const mine = page.getByRole("region", { name: "In use" });
+  await mine.getByRole("button", { name: "Notify me when it's done" }).click();
+  await expect(mine.getByText("We'll notify you when it's done.")).toBeVisible();
+
+  // Remembered across reloads, and cancellable.
+  await page.reload();
+  await mine.getByRole("button", { name: "Cancel" }).click();
+  await expect(mine.getByRole("button", { name: "Notify me when it's done" })).toBeVisible();
+  await mine.getByRole("button", { name: "Notify me when it's done" }).click();
+  await expect(mine.getByText("We'll notify you when it's done.")).toBeVisible();
+
+  // Fast-forward: the timer ran out a minute ago. The server's sweep sends the push and forgets the subscription.
+  const db = createClient({ url: "file:e2e.db" });
+  try {
+    await db.execute({ sql: "UPDATE machine_runs SET ends_at = ? WHERE alert_endpoint IS NOT NULL", args: [Date.now() - 60_000] });
+    await expect(async () => {
+      const { rows } = await db.execute("SELECT count(*) AS n FROM machine_runs WHERE alert_endpoint IS NOT NULL");
+      expect(Number(rows[0].n)).toBe(0);
+    }).toPass({ timeout: 45_000 });
+  } finally {
+    db.close();
+  }
+  await page.reload();
+  const done = page.getByRole("region", { name: "Should be done" });
+  await expect(done).toContainText("Your load should be done.");
+  await done.getByRole("button", { name: "I took my clothes out" }).click();
+  await expect(page.getByRole("region", { name: "Using it now?" })).toBeVisible();
 });
 
 test("the service worker is served fresh", async ({ request }) => {

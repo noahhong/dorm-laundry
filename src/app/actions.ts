@@ -261,3 +261,34 @@ export async function isWatchingForFix(code: string, endpoint: string): Promise<
     .where(and(eq(pushSubscriptions.machineId, m.id), eq(pushSubscriptions.endpoint, endpoint)));
   return Boolean(row);
 }
+
+/** "Tell me when it's done": attach this browser's push subscription to the viewer's own running timer (PLAN.md §18). */
+export async function alertWhenDone(runId: string, subscription: unknown): Promise<WatchResult> {
+  if (!pushPublicKey()) return { ok: false, error: "Notifications aren't set up on this site." };
+  const parsed = pushSubscriptionSchema.safeParse(subscription);
+  if (!parsed.success) return { ok: false, error: "This browser's notification service isn't supported." };
+  const device = await deviceHash({ create: false });
+  if (!device || typeof runId !== "string") return { ok: false, error: "Only the person who started the timer can do that." };
+  const { endpoint, keys } = parsed.data;
+  const updated = await getDb()
+    .update(machineRuns)
+    .set({ alertEndpoint: endpoint, alertP256dh: keys.p256dh, alertAuth: keys.auth })
+    .where(and(eq(machineRuns.id, runId), eq(machineRuns.deviceHash, device), isNull(machineRuns.endedAt), gt(machineRuns.endsAt, Date.now())))
+    .returning({ machineId: machineRuns.machineId });
+  if (updated.length === 0) return { ok: false, error: "That timer has already ended." };
+  await revalidateMachine(updated[0].machineId);
+  return { ok: true };
+}
+
+/** Take back "tell me when it's done" on the viewer's own timer. */
+export async function cancelRunAlert(runId: string): Promise<WatchResult> {
+  const device = await deviceHash({ create: false });
+  if (!device || typeof runId !== "string") return { ok: true };
+  const updated = await getDb()
+    .update(machineRuns)
+    .set({ alertEndpoint: null, alertP256dh: null, alertAuth: null })
+    .where(and(eq(machineRuns.id, runId), eq(machineRuns.deviceHash, device)))
+    .returning({ machineId: machineRuns.machineId });
+  if (updated.length > 0) await revalidateMachine(updated[0].machineId);
+  return { ok: true };
+}

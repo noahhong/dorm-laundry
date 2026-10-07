@@ -239,6 +239,13 @@ describe("currentRun (\"I started it\" timer)", () => {
     expect(currentRun([r], NOW)?.mine).toBe(false);
   });
 
+  it("only shows the starter that their done alert is on", () => {
+    const r = run({ ago: M, minutes: 30, deviceHash: "me", alertEndpoint: "https://fcm.googleapis.com/fcm/send/x" });
+    expect(currentRun([r], NOW, DEFAULT_PARAMS, "me")?.alertOn).toBe(true);
+    expect(currentRun([r], NOW, DEFAULT_PARAMS, "someone-else")?.alertOn).toBe(false);
+    expect(currentRun([{ ...r, alertEndpoint: null }], NOW, DEFAULT_PARAMS, "me")?.alertOn).toBe(false);
+  });
+
   it("pre-fills the room's paid dryer cycle, else the site-wide defaults", () => {
     expect(defaultRunMinutes("dryer", 60)).toBe(60);
     expect(defaultRunMinutes("dryer", null)).toBe(DEFAULT_PARAMS.run.dryerMinutes);

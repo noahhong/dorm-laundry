@@ -100,9 +100,14 @@ export const machineRuns = sqliteTable(
     endedAt: integer("ended_at"),
     deviceHash: text("device_hash").notNull(),
     ipHash: text("ip_hash").notNull(),
+    /** "Tell me when it's done": the starter's push subscription, cleared once the alert is sent or the run ends (PLAN.md §18). */
+    alertEndpoint: text("alert_endpoint"),
+    alertP256dh: text("alert_p256dh"),
+    alertAuth: text("alert_auth"),
   },
   (t) => [
     index("machine_runs_machine_time").on(t.machineId, t.startedAt),
+    index("machine_runs_ends").on(t.endsAt),
     index("machine_runs_device_time").on(t.deviceHash, t.startedAt),
     index("machine_runs_ip_time").on(t.ipHash, t.startedAt),
   ],

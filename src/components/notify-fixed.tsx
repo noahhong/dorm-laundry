@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { isWatchingForFix, stopWatchingForFix, watchForFix } from "@/app/actions";
+import { currentSubscription, isIos, pushSupported, subscribeForPush } from "@/lib/push-client";
 import { BellIcon } from "./icons";
 
 type State =
@@ -13,38 +14,6 @@ type State =
   | "install"
   | "unsupported"
   | "denied";
-
-const SW_URL = "/sw.js";
-
-function pushSupported() {
-  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-}
-
-function isIos() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
-/** VAPID public key (base64url) → the bytes `pushManager.subscribe` wants. */
-function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
-  const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(padded);
-  const out = new Uint8Array(new ArrayBuffer(raw.length));
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
-async function currentSubscription() {
-  const reg = await navigator.serviceWorker.getRegistration("/");
-  return (await reg?.pushManager.getSubscription()) ?? null;
-}
-
-/** Same key the server signs with? A rotated VAPID key means the old subscription can't receive our pushes. */
-function sameKey(sub: PushSubscription, key: Uint8Array) {
-  const have = sub.options.applicationServerKey;
-  if (!have) return false;
-  const a = new Uint8Array(have);
-  return a.length === key.length && a.every((b, i) => b === key[i]);
-}
 
 /** "Notify me when it's fixed" for a broken machine (PLAN.md §17). Opt-in, no account. */
 export function NotifyFixed({ code, label, publicKey }: { code: string; label: string; publicKey: string }) {
@@ -72,20 +41,12 @@ export function NotifyFixed({ code, label, publicKey }: { code: string; label: s
     setState("busy");
     setError(null);
     try {
-      const reg = await navigator.serviceWorker.register(SW_URL, { scope: "/", updateViaCache: "none" });
-      if ((await Notification.requestPermission()) !== "granted") {
-        setState(Notification.permission === "denied" ? "denied" : "idle");
+      const sub = await subscribeForPush(publicKey);
+      if (sub === "denied" || sub === "dismissed") {
+        setState(sub === "denied" ? "denied" : "idle");
         return;
       }
-      await navigator.serviceWorker.ready;
-      const key = urlBase64ToUint8Array(publicKey);
-      let sub = await reg.pushManager.getSubscription();
-      if (sub && !sameKey(sub, key)) {
-        await sub.unsubscribe();
-        sub = null;
-      }
-      sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      const res = await watchForFix(code, sub.toJSON());
+      const res = await watchForFix(code, sub);
       if (res.ok) setState("on");
       else {
         setError(res.error);

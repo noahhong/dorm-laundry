@@ -478,6 +478,8 @@ export interface RunInput {
   endsAt: number;
   endedAt: number | null;
   deviceHash: string;
+  /** Set while the starter is waiting for a "should be done" push. */
+  alertEndpoint?: string | null;
 }
 
 export interface InUse {
@@ -490,6 +492,8 @@ export interface InUse {
   expiresAt: number;
   /** Whether the viewer's own device started it (they can cancel it). */
   mine: boolean;
+  /** The viewer started it and asked to be told when it's done (PLAN.md §18). */
+  alertOn: boolean;
 }
 
 /**
@@ -502,13 +506,15 @@ export function currentRun(runs: RunInput[], now: number, params: Params = DEFAU
   for (const r of runs) if (r.startedAt <= now && (!newest || r.startedAt > newest.startedAt)) newest = r;
   if (!newest || (newest.endedAt != null && newest.endedAt <= now)) return null;
   if (now >= newest.endsAt + params.run.graceMs) return null;
+  const mine = viewerDevice != null && newest.deviceHash === viewerDevice;
   return {
     state: now < newest.endsAt ? "running" : "finishing",
     runId: newest.id,
     startedAt: newest.startedAt,
     endsAt: newest.endsAt,
     expiresAt: newest.endsAt + params.run.graceMs,
-    mine: viewerDevice != null && newest.deviceHash === viewerDevice,
+    mine,
+    alertOn: mine && newest.alertEndpoint != null,
   };
 }
 

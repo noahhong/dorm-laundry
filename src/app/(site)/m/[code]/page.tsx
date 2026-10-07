@@ -141,7 +141,7 @@ export default async function MachinePage(props: PageProps<"/m/[code]">) {
 
       {/* "I started it" timer */}
       {!data.retired && machine.adminState !== "out_of_order" && (
-        <RunTimer code={machine.code} kind={machine.kind} inUse={view.inUse} defaultMinutes={data.runMinutes} serverNow={now} />
+        <RunTimer code={machine.code} kind={machine.kind} inUse={view.inUse} defaultMinutes={data.runMinutes} serverNow={now} pushKey={pushKey} />
       )}
       {pushKey && !data.retired && canWatch(s.level) && <NotifyFixed code={machine.code} label={machine.label} publicKey={pushKey} />}
 

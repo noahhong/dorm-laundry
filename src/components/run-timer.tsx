@@ -3,6 +3,7 @@
 import { useId, useState, useSyncExternalStore, useTransition } from "react";
 import { endRun, startRun } from "@/app/actions";
 import type { InUse } from "@/lib/status";
+import { DoneAlert } from "./done-alert";
 import { ClockIcon } from "./icons";
 
 // One shared clock for every timer on the page, ticking every 15 s.
@@ -83,12 +84,15 @@ export function RunTimer({
   inUse,
   defaultMinutes,
   serverNow,
+  pushKey,
 }: {
   code: string;
   kind: "washer" | "dryer";
   inUse: InUse | null;
   defaultMinutes: number;
   serverNow: number;
+  /** VAPID public key when Web Push is set up: offers "Notify me when it's done" on your own timer. */
+  pushKey?: string;
 }) {
   const now = useNow(serverNow);
   const client = useIsClient();
@@ -170,6 +174,7 @@ export function RunTimer({
           </select>
         </div>
       )}
+      {active?.mine && running && pushKey && <DoneAlert runId={active.runId} on={active.alertOn} publicKey={pushKey} />}
       {error && (
         <p role="alert" className="mt-2 text-label text-broken-fg">
           {error}
