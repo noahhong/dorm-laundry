@@ -62,7 +62,8 @@ export default async function About() {
             stored; a daily-salted hash is kept for rate limiting. Notes you write are public, so please don&apos;t include names.
             If you use the laundry helper chat, what you type is sent to Anthropic&apos;s AI to answer it; we don&apos;t store it.
             If you ask to be notified when a machine is fixed, we keep your browser&apos;s push address until we send that one
-            notification, you cancel, or 90 days pass. Nothing else about you is attached to it.
+            notification, you cancel, or 90 days pass. If you ask to be told when your own load is done, we keep it only until your
+            timer runs out, you stop it, or you cancel. Nothing else about you is attached to it.
           </p>
         </section>
         <p className="rounded-[12px] bg-surface-2 p-3 text-label">

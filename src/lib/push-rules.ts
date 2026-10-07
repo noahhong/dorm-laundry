@@ -65,3 +65,34 @@ export function fixedPayload(m: { code: string; label: string; roomName: string 
   };
 }
 
+
+// "Tell me when it's done" for your own "I started it" timer (PLAN.md §18).
+
+/** How often the server checks for timers that just ran out. */
+export const DONE_SWEEP_MS = 20_000;
+/** A server that was asleep or restarted doesn't send alerts for loads that finished long ago. */
+export const DONE_STALE_MS = 30 * 60_000;
+
+export interface DueRun {
+  endsAt: number;
+  endedAt: number | null;
+}
+
+/**
+ * What to do with a run that has an alert: wait, send it, or drop it without sending. A stopped, reported or
+ * replaced run (endedAt set) is dropped: the starter already knows.
+ */
+export function doneAlertAction(run: DueRun, now: number): "wait" | "send" | "drop" {
+  if (run.endedAt != null) return "drop";
+  if (now < run.endsAt) return "wait";
+  return now - run.endsAt <= DONE_STALE_MS ? "send" : "drop";
+}
+
+export function donePayload(m: { code: string; label: string; kind: "washer" | "dryer"; roomName: string }): FixedPayload {
+  return {
+    title: `${m.label} should be done`,
+    body: `${m.roomName}: time to ${m.kind === "washer" ? "move your clothes to a dryer" : "grab your clothes"} so the next person can use it.`,
+    url: `/m/${m.code}`,
+    tag: `done-${m.code}`,
+  };
+}

@@ -1,4 +1,4 @@
-// Service worker: only shows "machine fixed" notifications (PLAN.md §17). No caching, no offline mode.
+// Service worker: only shows "machine fixed" (PLAN.md §17) and "should be done" (§18) notifications. No caching, no offline mode.
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));

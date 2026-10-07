@@ -228,6 +228,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - ✅ Cloudflare **Turnstile** on report submit (invisible), turned on by setting two env vars.
 - ✅ **"I started it" timer**: done-at estimate and "in use until ~3:40" on the card. Crowdsourced free/busy, auto-expiring. Pre-fills the room's minutes per payment (dryers) or a site-wide default; the newest tap wins; reporting how it went, or "Stop timer", ends your own. Stored in `machine_runs`; logic is `currentRun` in `src/lib/status.ts`.
 - ✅ **Notify me** when a broken machine is marked fixed (Web Push via PWA, §17).
+- ✅ **"Notify me when it's done"** on your own "I started it" timer: one push when the estimate runs out (§18).
 - ✅ **Fabric-aware tips** ("Athletic wear? Use Low on this machine"): the "What's in your load?" picker (§6.7), with thickness, learning from residents' recorded loads per fabric and thickness.
 - ✅ **Laundry helper chat**: describe the clothes in your own words, get the machine and setting (§6.8). Only on once an admin saves an Anthropic API key in Settings (or `ANTHROPIC_API_KEY` is set).
 - ✅ Room-level fallback recommendation (§6.4).
@@ -242,7 +243,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - Multi-tenant self-serve onboarding for other campuses (a campus admin role).
 - Licensed WASH status integration, *only with written permission*.
 - Optional hardware sensor feed (current clamp) behind the same `reports` pipeline.
-- Anonymous "your laundry is done, please collect it" pings (CycleTag-style).
+- Anonymous "your laundry is done, please collect it" pings to *whoever* started a machine, sent by the next person waiting (CycleTag-style). (Pinging yourself is done: §18.)
 
 ---
 
@@ -554,6 +555,7 @@ Mutations are **Server Actions**: progressive enhancement, no hand-written fetch
 - `submitReport(formData)`: validates with zod, rate-limits, inserts, `revalidatePath` on room and machine.
 - `undoReport(id)`: only the same device, within 5 minutes.
 - `watchForFix(code, subscription)` / `stopWatchingForFix(code, endpoint)` / `isWatchingForFix(code, endpoint)`: "notify me when it's fixed" (§17).
+- `alertWhenDone(runId, subscription)` / `cancelRunAlert(runId)`: "notify me when it's done" on your own timer (§18).
 - Admin actions: `createBuilding`, `createRoom`, `addMachines`, `updateMachine`, `setOutOfOrder`, `markFixed`, `retireMachine`, `hideReport`, `login`, `logout`.
 
 Read-only JSON for widgets, bots and future apps:
@@ -871,6 +873,7 @@ Layered, cheapest first:
 - Load photos are optional, admin-only unless the owner turns on "Show load photos publicly", and re-encoded on the phone so location metadata is never uploaded. Hiding a report hides its photo; deleting a report deletes it.
 - Reports older than 180 days can be purged (they no longer affect results after about 60 days).
 - "Notify me when it's fixed" stores the browser's push endpoint and keys (plus the device hash, for a cap) only until the one notification is sent, the resident cancels, or 90 days pass (§17).
+- "Notify me when it's done" keeps the push endpoint and keys on the resident's own timer row only until the timer runs out, is stopped or replaced, or they cancel (§18).
 - `/about` explains all of this and states that the site is **not affiliated with WASH or the university**.
 
 ## 13. Accessibility
@@ -1035,3 +1038,23 @@ Status decaying on its own (no new report, no admin action) does not send anythi
 - A browser can only watch a machine that is currently Broken; at most 20 watches per device and 500 per machine; watches expire after 90 days.
 - Cancelling requires the (unguessable) endpoint.
 
+## 18. Notify me when my load is done *(v1, added after the pilot features)*
+
+Whoever taps **I started it** on a machine can then tap **Notify me when it's done** on the same card and gets **one** push notification when their timer's estimate runs out: "Washer 3 should be done. Laundry room: time to move your clothes to a dryer so the next person can use it." (dryers say "grab your clothes"). Tapping it opens that machine's page, where "I took my clothes out" ends the timer.
+
+**When it's offered**
+- Only on your own running timer (same device cookie as the tap), and only when the `VAPID_*` keys are set. Same browser support as §17: iPhone needs the site on the Home Screen first, and the card says so; blocked notifications get a hint; unsupported browsers see nothing.
+- Cancellable from the card ("We'll notify you when it's done. Cancel"), and remembered across reloads.
+
+**What sends it, and what doesn't**
+| Run state at the estimate | Result |
+|---|---|
+| Still running | One push, TTL 30 min (a "done" alert is useless hours later) |
+| Stopped, reported on ("how did it go?") or replaced by a newer tap | Nothing: the subscription is dropped |
+| More than 30 min past the estimate (server was off or asleep) | Nothing: dropped |
+
+**How it works**
+- No new table: `machine_runs` gains `alert_endpoint`, `alert_p256dh`, `alert_auth` (migration 0008). They are cleared as soon as the alert is sent or dropped.
+- `src/instrumentation.ts` starts a sweep every 20 s in the Node server (`startRunAlertSweep` in `src/lib/run-alerts.ts`). Each alert is claimed by clearing its columns before sending, so two overlapping sweeps can't double-send. Rules are pure in `push-rules.ts` (`doneAlertAction`, `donePayload`).
+- This needs a long-running server, which is how the site runs today (`next dev` / `next start` on one machine). A serverless host would need a cron that calls `sendDueRunAlerts` instead.
+- Same push-service allowlist and key checks as §17. Only the device that started the run can set or cancel its alert.
