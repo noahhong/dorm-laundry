@@ -30,6 +30,18 @@ export default async function Dashboard() {
         }
       />
 
+      {d.flagged > 0 && (
+        <Link
+          href="/admin/reports?state=flagged"
+          className="pressable mb-4 flex items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-broken-icon/40 bg-broken-tint px-4 py-3 text-label font-semibold text-broken-fg"
+        >
+          <span>
+            {d.flagged} flagged report{d.flagged === 1 ? "" : "s"} need{d.flagged === 1 ? "s" : ""} a look
+          </span>
+          <span aria-hidden>→</span>
+        </Link>
+      )}
+
       {totals.machines === 0 ? (
         <Card>
           <Empty>

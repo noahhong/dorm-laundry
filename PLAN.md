@@ -235,7 +235,7 @@ Each status gets a distinct **shape, glyph and label**, never color alone. Palet
 - ✅ Outlier detection: "Dries worse than the other dryers here" with a link to WASH's service request (§6.5). Still to do: pre-filled service request.
 - ✅ PWA manifest + add-to-home-screen. Still to do: favorite room.
 - ✅ Manual theme toggle (Auto / Light / Dark). Still to do: Spanish / Chinese / Korean i18n.
-- Admin: moderation queue for flagged reports, CSV export, report counts over time.
+- ✅ Admin: moderation queue for flagged reports (§19), CSV export, report counts over time.
 
 ### Later
 - ✅ Busy hours from our own timer events (§6.10).
@@ -543,7 +543,7 @@ Local time uses Settings → Site → Time zone (default America/Los_Angeles). I
 | `/admin` | server | **Dashboard**: report trends, top problems, machines needing attention, per-room overview, rules in effect, recent admin activity |
 | `/admin/rooms` | server | Buildings and rooms: create, rename, delete (type-the-name confirmation) |
 | `/admin/rooms/[id]` | server | Room settings (**which dryer settings the room has**, minutes per payment, WASH code); machines: add in bulk, rename, out-of-order, mark fixed, retire; recent reports; delete room |
-| `/admin/reports` | server | Global moderation: search and filter, hide/unhide one or many |
+| `/admin/reports` | server | Global moderation: search and filter, hide/unhide one or many; `?state=flagged` is the Flagged queue with Keep (§19) |
 | `/admin/reports/export` | route handler | CSV download of the filtered reports (admin only) |
 | `/admin/settings` | server + client form | Every tunable rule, live (see §16) |
 | `/admin/audit` | server | Activity log of all admin actions |
@@ -556,6 +556,7 @@ Mutations are **Server Actions**: progressive enhancement, no hand-written fetch
 - `undoReport(id)`: only the same device, within 5 minutes.
 - `watchForFix(code, subscription)` / `stopWatchingForFix(code, endpoint)` / `isWatchingForFix(code, endpoint)`: "notify me when it's fixed" (§17).
 - `alertWhenDone(runId, subscription)` / `cancelRunAlert(runId)`: "notify me when it's done" on your own timer (§18).
+- `flagReport({ reportId, reason })` / `unflagReport(reportId)`: "Flag this report" (§19). Admin: `keepReport`.
 - Admin actions: `createBuilding`, `createRoom`, `addMachines`, `updateMachine`, `setOutOfOrder`, `markFixed`, `retireMachine`, `hideReport`, `login`, `logout`.
 
 Read-only JSON for widgets, bots and future apps:
@@ -854,7 +855,7 @@ Layered, cheapest first:
 5. **Duplicate-aware UI.** Existing issues are shown as "Still broken?" confirmations, not fresh reports.
 6. **Admin tools:** hide report, out-of-order override, mark fixed (resets status evidence).
 7. **Notes** are limited to 280 characters, rendered as plain text, and never linkified.
-8. **v1:** Turnstile (invisible) on submit; verified school email counts 2×; "flag this report".
+8. **v1:** Turnstile (invisible) on submit; verified school email counts 2×; ✅ "flag this report" (§19).
 
 ### 11.1 Hardening pass *(after the first security review)*
 - The minimum-time check needs a client-supplied `elapsedMs`; it is now required, and the honeypot is dropped silently instead of failing validation. Both are speed bumps for naive scripts, not real bot defenses: turn on Turnstile before relying on them.
@@ -1058,3 +1059,19 @@ Whoever taps **I started it** on a machine can then tap **Notify me when it's do
 - `src/instrumentation.ts` starts a sweep every 20 s in the Node server (`startRunAlertSweep` in `src/lib/run-alerts.ts`). Each alert is claimed by clearing its columns before sending, so two overlapping sweeps can't double-send. Rules are pure in `push-rules.ts` (`doneAlertAction`, `donePayload`).
 - This needs a long-running server, which is how the site runs today (`next dev` / `next start` on one machine). A serverless host would need a cron that calls `sendDueRunAlerts` instead.
 - Same push-service allowlist and key checks as §17. Only the device that started the run can set or cancel its alert.
+
+## 19. Flag this report *(v1)*
+
+Under someone else's report on a machine page, **Flag** opens four reasons: *Spam or fake*, *Rude or offensive*, *Names or personal info*, *Wrong machine or not true*. One tap on a reason records it ("Flagged. Thanks, an admin will take a look." with **Undo**). No login; not offered on your own report (undo that instead).
+
+**What a flag does**
+- One flag per device per report (picking again changes the reason). Same daily caps per device and per network as reports, counted separately.
+- When **Settings → Reports & abuse limits → Flags that hide a report** different devices have flagged it (default 3, 0 = never), it is hidden on the spot. The status and recommendation recompute without it, and if it was a bogus "broken" report, people waiting on "notify me when it's fixed" hear about it (§17). The audit log records "Residents' flags hid a report".
+- Flags never change a report's weight; only hiding does. "Not for me" (§6.9) is the way to disagree with an honest report.
+
+**Admin**
+- The dashboard shows "N flagged reports need a look" whenever any report has flags an admin hasn't settled. It opens **Reports → Flagged, needs a look**, which lists those reports (hidden or not, any age) with their reasons, e.g. "Spam or fake ×2 · Wrong machine or not true".
+- **Keep**: the report is fine. It shows again and the flags so far stop counting (`reports.flags_cleared_at`), so it takes a fresh set of flags to hide it again.
+- **Hide** (row, bulk, or anywhere else): it stays hidden and leaves the queue the same way.
+
+**Data**: `report_flags` (report, device hash, IP hash, reason, time; unique per report and device) and `reports.flags_cleared_at`, migration 0009. Rules are pure in `src/lib/flags.ts`.

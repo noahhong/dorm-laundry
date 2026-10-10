@@ -3,6 +3,7 @@ import { DRYER_OUTCOMES, WASHER_OUTCOMES } from "@/lib/labels";
 
 export const STATES: { value: ReportState; label: string }[] = [
   { value: "visible", label: "Visible" },
+  { value: "flagged", label: "Flagged, needs a look" },
   { value: "hidden", label: "Hidden by an admin" },
   { value: "undone", label: "Undone by reporter" },
   { value: "all", label: "Everything" },
