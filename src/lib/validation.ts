@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FLAG_REASONS } from "./flags";
 import { PHOTO_MAX_DATA_URL } from "./photo";
 import { DAMAGE_KINDS, DRYER_OUTCOMES, FABRICS, DRYER_SETTINGS, DRYER_SYMPTOMS, LOAD_SIZES, THICKNESSES, WASHER_OUTCOMES, WASHER_SETTINGS, WASHER_SYMPTOMS } from "./labels";
 
@@ -67,6 +68,12 @@ export const runSchema = z.object({
   minutes: z.number().int().min(5).max(120),
 });
 export type RunPayload = z.input<typeof runSchema>;
+
+/** "Flag this report" (PLAN.md §19). */
+export const flagSchema = z.object({
+  reportId: z.string().min(1).max(64),
+  reason: z.enum(FLAG_REASONS),
+});
 
 /** "Same here" / "Not for me" on a report. */
 export const voteSchema = z.object({

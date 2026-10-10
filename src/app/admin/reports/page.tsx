@@ -7,7 +7,8 @@ import { listAllRooms, listReports } from "@/lib/admin-queries";
 import { ALL_OUTCOMES, parseFilters, STATES } from "./filters";
 import { timeAgo } from "@/lib/format";
 import { OUTCOME_LABEL, SETTING_LABEL, SYMPTOM_LABEL, damageSummary, loadSummary } from "@/lib/labels";
-import { bulkSetReportsHidden, toggleReportHidden } from "../actions";
+import { bulkSetReportsHidden, keepReport, toggleReportHidden } from "../actions";
+import { FLAG_REASON_LABEL, type FlagReason } from "@/lib/flags";
 import { input } from "../styles";
 
 export const metadata: Metadata = { title: "Admin · Reports", robots: { index: false } };
@@ -132,7 +133,7 @@ export default async function ReportsAdmin(props: PageProps<"/admin/reports">) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ report: r, machineLabel, machineCode, roomName, buildingName, roomId, hasPhoto }) => (
+                {rows.map(({ report: r, machineLabel, machineCode, roomName, buildingName, roomId, hasPhoto, flags }) => (
                   <tr key={r.id} className={r.hiddenAt || r.undoneAt ? "opacity-55" : ""}>
                     <td className={td}>
                       <input type="checkbox" form="bulk-form" name="reportId" value={r.id} aria-label={`Select report on ${machineLabel}`} className="h-4 w-4 accent-[var(--accent)]" />
@@ -170,13 +171,32 @@ export default async function ReportsAdmin(props: PageProps<"/admin/reports">) {
                       <span className="mt-0.5 flex gap-1">
                         {r.hiddenAt && <Pill tone="caution">Hidden</Pill>}
                         {r.undoneAt && <Pill>Undone</Pill>}
+                        {flags.length > 0 && <Pill tone="broken">Flagged</Pill>}
                       </span>
+                      {flags.length > 0 && (
+                        <span className="mt-0.5 block text-caption text-broken-fg">
+                          {flags.map(([reason, n]) => `${FLAG_REASON_LABEL[reason as FlagReason] ?? reason}${n > 1 ? ` ×${n}` : ""}`).join(" · ")}
+                        </span>
+                      )}
                     </td>
                     <td className={`${td} max-w-[260px] break-words text-text-2`}>{r.note ? `“${r.note}”` : <span className="text-text-3">—</span>}</td>
                     <td className={`${td} whitespace-nowrap font-mono text-caption text-text-3`} title="Anonymous device hash (first 8 characters)">
                       {r.deviceHash.slice(0, 8)}
                     </td>
-                    <td className={`${td} text-right`}>
+                    <td className={`${td} space-y-1.5 text-right`}>
+                      {flags.length > 0 && (
+                        <form action={keepReport}>
+                          <input type="hidden" name="keep" value={r.id} />
+                          <button
+                            type="submit"
+                            className="pressable h-9 rounded-[8px] border border-border px-3 text-caption font-semibold text-text-2 hover:bg-surface-2"
+                            aria-label={`Keep report on ${machineLabel}`}
+                            title="The report is fine: show it and dismiss the flags"
+                          >
+                            Keep
+                          </button>
+                        </form>
+                      )}
                       <form action={toggleReportHidden}>
                         <input type="hidden" name="toggle" value={r.id} />
                         <button

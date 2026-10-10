@@ -7,6 +7,7 @@ import { LaundryHelper } from "@/components/laundry-helper";
 import { LoadAdvice } from "@/components/load-advice";
 import { NotifyFixed } from "@/components/notify-fixed";
 import { ReportSheet } from "@/components/report-sheet";
+import { ReportFlag } from "@/components/report-flag";
 import { ReportVotes } from "@/components/report-votes";
 import { RunTimer } from "@/components/run-timer";
 import { CONF_LABEL, ConfidenceDots, STATUS_LABEL, TONE } from "@/components/status";
@@ -67,6 +68,7 @@ function ReportRow({ r, kind, now }: { r: PublicReport; kind: "washer" | "dryer"
           </a>
         )}
         <ReportVotes reportId={r.id} votes={r.votes} mine={r.mine} />
+        {!r.mine && <ReportFlag reportId={r.id} flagged={r.flagged} />}
       </div>
     </li>
   );

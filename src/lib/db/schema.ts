@@ -75,6 +75,8 @@ export const reports = sqliteTable(
     ipHash: text("ip_hash").notNull(),
     trust: real("trust").notNull().default(1),
     hiddenAt: integer("hidden_at"),
+    /** An admin reviewed the flags (hid or kept the report): flags from before this no longer count (PLAN.md §19). */
+    flagsClearedAt: integer("flags_cleared_at"),
     /** Set when the reporter undoes it. Kept (not deleted) so undo can't be used to reset rate limits. */
     undoneAt: integer("undone_at"),
   },
@@ -129,6 +131,25 @@ export const reportVotes = sqliteTable(
     uniqueIndex("report_votes_report_device").on(t.reportId, t.deviceHash),
     index("report_votes_device_time").on(t.deviceHash, t.createdAt),
     index("report_votes_ip_time").on(t.ipHash, t.createdAt),
+  ],
+);
+
+/** "Flag this report": a resident says someone else's report is spam, rude, personal or wrong (PLAN.md §19). One per device per report. */
+export const reportFlags = sqliteTable(
+  "report_flags",
+  {
+    reportId: text("report_id")
+      .notNull()
+      .references(() => reports.id, { onDelete: "cascade" }),
+    deviceHash: text("device_hash").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    reason: text("reason", { enum: ["spam", "rude", "personal", "wrong"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("report_flags_report_device").on(t.reportId, t.deviceHash),
+    index("report_flags_device_time").on(t.deviceHash, t.createdAt),
+    index("report_flags_ip_time").on(t.ipHash, t.createdAt),
   ],
 );
 
@@ -201,4 +222,5 @@ export type Machine = typeof machines.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type MachineRun = typeof machineRuns.$inferSelect;
 export type ReportVote = typeof reportVotes.$inferSelect;
+export type ReportFlag = typeof reportFlags.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

@@ -96,6 +96,7 @@ export const FIELDS = [
   { key: "rateDevicePerDay", group: "abuse", kind: "int", min: 1, max: 500, step: 1, default: 30, label: "Reports per device per day", help: "", unit: "reports" },
   { key: "rateIpPerDay", group: "abuse", kind: "int", min: 10, max: 5000, step: 10, default: 300, label: "Reports per network per day", help: "A whole dorm can share one address, so keep this generous; it is a backstop against scripts.", unit: "reports" },
   { key: "minElapsedMs", group: "abuse", kind: "int", min: 0, max: 5000, step: 100, default: 800, label: "Minimum time to fill a report", help: "Reports submitted faster than this after opening the sheet are silently dropped (bots).", unit: "ms" },
+  { key: "flagsToHide", group: "abuse", kind: "int", min: 0, max: 20, step: 1, default: 3, label: "Flags that hide a report", help: "When this many different phones flag a report (spam, rude, personal info or wrong), it is hidden until you check it under Reports → Flagged. 0 = flags never hide anything on their own.", unit: "flags" },
   { key: "undoWindowMinutes", group: "abuse", kind: "int", min: 1, max: 60, step: 1, default: 5, label: "Undo window", help: "How long a reporter can take back their own report.", unit: "min" },
 ] as const satisfies readonly (NumField<string> | BoolField<string> | TextField<string> | ChoiceField<string>)[];
 
