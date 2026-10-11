@@ -19,6 +19,8 @@ const LABELS: Record<string, string> = {
   "report.unhide": "Unhid a report",
   "report.bulk_hide": "Hid several reports",
   "report.bulk_unhide": "Unhid several reports",
+  "report.keep": "Kept a flagged report",
+  "report.auto_hide": "Residents' flags hid a report",
   "settings.update": "Changed settings",
   "settings.reset": "Reset settings to defaults",
   "assistant.key.save": "Saved the laundry helper API key",

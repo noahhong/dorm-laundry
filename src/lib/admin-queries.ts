@@ -1,7 +1,8 @@
 import "server-only";
-import { and, count, desc, eq, gte, isNotNull, isNull, max, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { auditLog, buildings, machines, pushSubscriptions, reportPhotos, reports, rooms } from "./db/schema";
+import { auditLog, buildings, machines, pushSubscriptions, reportFlags, reportPhotos, reports, rooms } from "./db/schema";
+import { flagReasons } from "./flags";
 import { getConfig } from "./config-server";
 import { listBuildingsWithRooms, machinesForRoom } from "./queries";
 import { SYMPTOM_LABEL } from "./labels";
@@ -117,10 +118,12 @@ export async function getDashboard(now = Date.now()) {
   attention.sort((a, b) => b.severity - a.severity || a.label.localeCompare(b.label));
 
   const audit = await db.select().from(auditLog).orderBy(desc(auditLog.at)).limit(8);
+  const [{ n: flagged }] = await db.select({ n: count() }).from(reports).where(and(hasOpenFlags, isNull(reports.undoneAt)));
 
   return {
     now,
     config,
+    flagged,
     totals,
     today,
     yesterday,
@@ -149,7 +152,10 @@ export async function getDashboard(now = Date.now()) {
 
 export const REPORT_RANGES = { "24h": DAY, "7d": 7 * DAY, "30d": 30 * DAY, "90d": 90 * DAY, all: 0 } as const;
 export type ReportRange = keyof typeof REPORT_RANGES;
-export type ReportState = "visible" | "hidden" | "undone" | "all";
+export type ReportState = "visible" | "flagged" | "hidden" | "undone" | "all";
+
+/** A resident flagged it since an admin last hid or kept it (PLAN.md §19). */
+const hasOpenFlags = sql`exists(select 1 from ${reportFlags} where ${reportFlags.reportId} = ${reports.id} and ${reportFlags.createdAt} > coalesce(${reports.flagsClearedAt}, 0))`;
 
 export interface ReportFilters {
   q?: string;
@@ -166,9 +172,11 @@ function reportWhere(f: ReportFilters, now: number): SQL | undefined {
   const c: (SQL | undefined)[] = [];
   const state = f.state ?? "visible";
   if (state === "visible") c.push(isNull(reports.hiddenAt), isNull(reports.undoneAt));
+  else if (state === "flagged") c.push(hasOpenFlags, isNull(reports.undoneAt));
   else if (state === "hidden") c.push(isNotNull(reports.hiddenAt));
   else if (state === "undone") c.push(isNotNull(reports.undoneAt));
-  const range = REPORT_RANGES[f.range ?? "30d"];
+  // The flagged queue is short and must be complete, so it ignores the period.
+  const range = state === "flagged" ? 0 : REPORT_RANGES[f.range ?? "30d"];
   if (range) c.push(gte(reports.createdAt, now - range));
   if (f.roomId) c.push(eq(machines.roomId, f.roomId));
   if (f.kind) c.push(eq(machines.kind, f.kind));
@@ -207,7 +215,16 @@ export async function listReports(f: ReportFilters, page: number, pageSize = 25,
     .from(reports)
     .innerJoin(machines, eq(reports.machineId, machines.id))
     .where(where);
-  const rows = await base.orderBy(desc(reports.createdAt)).limit(pageSize).offset(Math.max(0, page - 1) * pageSize);
+  const page_ = await base.orderBy(desc(reports.createdAt)).limit(pageSize).offset(Math.max(0, page - 1) * pageSize);
+  // Open flags per report on this page, as reason counts.
+  const flags = page_.length
+    ? await db
+        .select({ reportId: reportFlags.reportId, reason: reportFlags.reason, createdAt: reportFlags.createdAt })
+        .from(reportFlags)
+        .innerJoin(reports, eq(reportFlags.reportId, reports.id))
+        .where(and(inArray(reportFlags.reportId, page_.map((r) => r.report.id)), sql`${reportFlags.createdAt} > coalesce(${reports.flagsClearedAt}, 0)`))
+    : [];
+  const rows = page_.map((r) => ({ ...r, flags: flagReasons(flags.filter((f) => f.reportId === r.report.id)) }));
   return { rows, total: n, pageSize, pages: Math.max(1, Math.ceil(n / pageSize)), now };
 }
 

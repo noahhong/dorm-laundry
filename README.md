@@ -10,7 +10,7 @@ Finding the best setting for dorm laundry (starting at Hedrick Summit) so no mor
 - on the room page, **when it's usually busy**: a bar per hour for each weekday, built from "I started it" taps
 - optionally, the **laundry helper**: describe your clothes in your own words ("gym leggings and a wool sweater") and an AI helper tells you which washer and dryer to use and on what setting, using the same rules and this room's reports
 
-A "Damaged clothes" report can say what got damaged and how, and any report can carry an optional photo of the load (admin-only by default). Under each report, others can tap **Same here** or **Not for me**, which makes it count more or less.
+A "Damaged clothes" report can say what got damaged and how, and any report can carry an optional photo of the load (admin-only by default). Under each report, others can tap **Same here** or **Not for me**, which makes it count more or less, or **Flag** it as spam, rude, personal info or wrong; enough flags hide it until an admin checks it.
 
 After a load, they report how it went in **3 taps**, with no login and no app. Status and recommendations come from recent reports, with time decay (see [PLAN.md §6](PLAN.md#6-algorithm-status-and-best-setting)).
 
@@ -50,10 +50,10 @@ To reset the demo data, run `npm run db:seed -- --reset`. The seed includes four
 
 | Page | What you can do |
 |---|---|
-| **Dashboard** | Reports today / this week with trends, a 14-day chart, top problems, every machine that needs attention (broken, doubtful, weak, never reported), a per-room overview, and the rules currently in effect |
+| **Dashboard** | A "flagged reports need a look" link when residents have flagged anything, reports today / this week with trends, a 14-day chart, top problems, every machine that needs attention (broken, doubtful, weak, never reported), a per-room overview, and the rules currently in effect |
 | **Rooms & machines** | Add, rename and delete buildings and rooms. Per room: which **dryer settings those dryers actually have** (residents can only report, and get recommended, what you tick), minutes per payment, WASH room code. Add machines in bulk, edit, mark out of order / fixed, retire, and **print QR sticker sheets**. Each machine shows how many residents are waiting to hear it's fixed; **Mark fixed** notifies them |
-| **Reports** | Search and filter every report (room, kind, outcome, visible/hidden/undone, period), hide or unhide one or many, and **download a CSV** |
-| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; load photos on/off and public or admin-only; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; the laundry helper's API key, on/off and limits; rate limits and bot speed bumps. Each field shows its default and a "Changed" badge; one click resets everything |
+| **Reports** | Search and filter every report (room, kind, outcome, visible/flagged/hidden/undone, period), hide or unhide one or many, and **download a CSV**. **Flagged, needs a look** lists reports residents flagged, with their reasons; **Keep** shows the report again and dismisses the flags, **Hide** takes it down |
+| **Settings** | Every rule, editable live: site name, tagline and announcement banner; whether notes are public; load photos on/off and public or admin-only; **how many reports mark a machine Broken**; status and setting memory; weak-dryer thresholds; **per-fabric limits for load advice**; the laundry helper's API key, on/off and limits; rate limits, bot speed bumps and **how many flags hide a report**. Each field shows its default and a "Changed" badge; one click resets everything |
 | **Activity log** | Who-did-what record of every admin action, including before → after for each setting |
 
 Settings are stored in the database, not in code, so they survive deploys and apply to the public pages immediately. Secrets (admin password, bot-check keys) stay in environment variables.

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { buildings, machineRuns, machines, reportPhotos, reports, reportVotes, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
+import { buildings, machineRuns, machines, reportFlags, reportPhotos, reports, reportVotes, rooms, type Machine, type MachineRun, type Report, type Room } from "./db/schema";
 import { busyWeek, type BusyWeek } from "./busy";
 import { deviceHash } from "./device";
 import { getConfig } from "./config-server";
@@ -212,6 +212,8 @@ export type PublicReport = Pick<Report, "id" | "createdAt" | "outcome" | "settin
   votes: VoteTally;
   /** Sent from this browser, so it can't be voted on here. */
   mine: boolean;
+  /** This browser flagged it (PLAN.md §19). */
+  flagged: boolean;
 };
 
 export async function getMachine(code: string, now = Date.now()) {
@@ -246,6 +248,14 @@ export async function getMachine(code: string, now = Date.now()) {
     const ids = await db.select({ id: reportPhotos.reportId }).from(reportPhotos).where(inArray(reportPhotos.reportId, latest.map((r) => r.id)));
     for (const { id } of ids) withPhoto.add(id);
   }
+  const flaggedByViewer = new Set<string>();
+  if (viewer && latest.length > 0) {
+    const ids = await db
+      .select({ id: reportFlags.reportId })
+      .from(reportFlags)
+      .where(and(eq(reportFlags.deviceHash, viewer), inArray(reportFlags.reportId, latest.map((r) => r.id))));
+    for (const { id } of ids) flaggedByViewer.add(id);
+  }
   const recent: PublicReport[] = latest
     .map(({ id, createdAt, outcome, setting, symptoms, errorCode, minutes, loadSize, fabrics, thickness, damagedItems, damageKinds, note, deviceHash: by }) => ({
       id,
@@ -263,6 +273,7 @@ export async function getMachine(code: string, now = Date.now()) {
       hasPhoto: withPhoto.has(id),
       votes: byMachine.votes.get(id) ?? { same: 0, different: 0, mine: null },
       mine: viewer != null && by === viewer,
+      flagged: flaggedByViewer.has(id),
       // Admins can keep residents' free text private (Settings → "Show report notes publicly").
       note: config.notesPublic ? note : null,
     }));

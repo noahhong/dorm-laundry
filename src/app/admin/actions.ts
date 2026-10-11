@@ -166,7 +166,7 @@ export async function setReportHidden(fd: FormData) {
   await requireAdmin();
   const id = str(fd, "reportId");
   const hide = str(fd, "hide") === "1";
-  await getDb().update(reports).set({ hiddenAt: hide ? Date.now() : null }).where(eq(reports.id, id));
+  await getDb().update(reports).set(hideSet(hide)).where(eq(reports.id, id));
   await audit(hide ? "report.hide" : "report.unhide", id, null);
   refresh();
 }
@@ -177,7 +177,7 @@ export async function bulkSetReportsHidden(fd: FormData) {
   const ids = fd.getAll("reportId").map(String).filter(Boolean).slice(0, 500);
   if (ids.length === 0) return;
   const hide = str(fd, "hide") === "1";
-  await getDb().update(reports).set({ hiddenAt: hide ? Date.now() : null }).where(inArray(reports.id, ids));
+  await getDb().update(reports).set(hideSet(hide)).where(inArray(reports.id, ids));
   await audit(hide ? "report.bulk_hide" : "report.bulk_unhide", null, { count: ids.length });
   refresh();
 }
@@ -301,7 +301,28 @@ export async function toggleReportHidden(fd: FormData) {
   const db = getDb();
   const [r] = await db.select({ hiddenAt: reports.hiddenAt }).from(reports).where(eq(reports.id, id));
   if (!r) return;
-  await db.update(reports).set({ hiddenAt: r.hiddenAt ? null : Date.now() }).where(eq(reports.id, id));
+  await db.update(reports).set(hideSet(!r.hiddenAt)).where(eq(reports.id, id));
   await audit(r.hiddenAt ? "report.unhide" : "report.hide", id, null);
+  refresh();
+}
+
+/** Hiding a report also settles its flags, so it leaves the Flagged queue (PLAN.md §19). Unhiding leaves them alone. */
+function hideSet(hide: boolean) {
+  const now = Date.now();
+  return hide ? { hiddenAt: now, flagsClearedAt: now } : { hiddenAt: null };
+}
+
+/** Flagged queue: the report is fine. Show it again (if flags hid it) and stop counting the flags so far. */
+export async function keepReport(fd: FormData) {
+  await requireAdmin();
+  const id = str(fd, "keep");
+  if (!id) return;
+  const updated = await getDb()
+    .update(reports)
+    .set({ hiddenAt: null, flagsClearedAt: Date.now() })
+    .where(eq(reports.id, id))
+    .returning({ machineId: reports.machineId });
+  if (updated.length === 0) return;
+  await audit("report.keep", id, null);
   refresh();
 }

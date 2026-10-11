@@ -4,7 +4,9 @@ import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { getDb } from "@/lib/db";
-import { buildings, machineRuns, machines, pushSubscriptions, reportPhotos, reports, reportVotes, rooms } from "@/lib/db/schema";
+import { buildings, machineRuns, machines, pushSubscriptions, reportFlags, reportPhotos, reports, reportVotes, rooms } from "@/lib/db/schema";
+import { audit } from "@/lib/audit";
+import { openFlags, shouldAutoHide } from "@/lib/flags";
 import { getConfig } from "@/lib/config-server";
 import { checkRateLimit, clientIp, deviceHash, ipHash } from "@/lib/device";
 import { notifyIfFixed, pruneExpiredWatches, pushPublicKey, watcherCount } from "@/lib/push";
@@ -14,7 +16,7 @@ import { offeredSettings } from "@/lib/rooms";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { randomId } from "@/lib/ids";
 import { decodePhoto } from "@/lib/photo";
-import { checkForKind, reportSchema, runSchema, voteSchema, type ReportPayload, type RunPayload } from "@/lib/validation";
+import { checkForKind, flagSchema, reportSchema, runSchema, voteSchema, type ReportPayload, type RunPayload } from "@/lib/validation";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -139,6 +141,70 @@ export async function voteOnReport(payload: unknown): Promise<ActionResult> {
   await revalidateMachine(report.machineId);
   // A "Same here" on a works-now report can be what flips a machine back to working.
   if (pushPublicKey()) after(() => notifyIfFixed(report.machineId));
+  return { ok: true, id: reportId };
+}
+
+/**
+ * "Flag this report" (PLAN.md §19): spam, rude, personal info or wrong. One flag per device per report (flagging
+ * again changes the reason). Enough flags from different devices hide the report until an admin checks it.
+ */
+export async function flagReport(payload: unknown): Promise<ActionResult> {
+  const parsed = flagSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, error: "Couldn't record that." };
+  const { reportId, reason } = parsed.data;
+  const db = getDb();
+  const config = await getConfig();
+  const now = Date.now();
+  const [report] = await db
+    .select({ id: reports.id, machineId: reports.machineId, deviceHash: reports.deviceHash, hiddenAt: reports.hiddenAt, flagsClearedAt: reports.flagsClearedAt })
+    .from(reports)
+    .where(and(eq(reports.id, reportId), isNull(reports.undoneAt)))
+    .limit(1);
+  if (!report || report.hiddenAt) return { ok: false, error: "That report is already hidden." };
+
+  const device = (await deviceHash({ create: true }))!;
+  if (report.deviceHash === device) return { ok: false, error: "That's your own report. You can undo it instead." };
+  const ip = await ipHash(now);
+  const [existing] = await db
+    .select({ reason: reportFlags.reason })
+    .from(reportFlags)
+    .where(and(eq(reportFlags.reportId, reportId), eq(reportFlags.deviceHash, device)));
+  if (!existing) {
+    // Same daily caps as reports, counted separately.
+    const dayAgo = now - 24 * 3_600_000;
+    const [byDevice] = await db.select({ n: count() }).from(reportFlags).where(and(eq(reportFlags.deviceHash, device), gte(reportFlags.createdAt, dayAgo)));
+    if (byDevice.n >= config.rateDevicePerDay) return { ok: false, error: "That's a lot of flags today. Try again tomorrow." };
+    const [byIp] = await db.select({ n: count() }).from(reportFlags).where(and(eq(reportFlags.ipHash, ip), gte(reportFlags.createdAt, dayAgo)));
+    if (byIp.n >= config.rateIpPerDay) return { ok: false, error: "Too many flags from this network today." };
+  }
+  await db
+    .insert(reportFlags)
+    .values({ reportId, deviceHash: device, ipHash: ip, reason, createdAt: now })
+    .onConflictDoUpdate({ target: [reportFlags.reportId, reportFlags.deviceHash], set: { reason, ipHash: ip, createdAt: now } });
+
+  const flags = await db.select({ createdAt: reportFlags.createdAt, reason: reportFlags.reason }).from(reportFlags).where(eq(reportFlags.reportId, reportId));
+  const open = openFlags(flags, report.flagsClearedAt).length;
+  if (shouldAutoHide(open, config.flagsToHide, false)) {
+    const hidden = await db
+      .update(reports)
+      .set({ hiddenAt: now })
+      .where(and(eq(reports.id, reportId), isNull(reports.hiddenAt)))
+      .returning({ id: reports.id });
+    if (hidden.length > 0) {
+      await audit("report.auto_hide", reportId, { flags: open });
+      await revalidateMachine(report.machineId);
+      // Hiding a bogus "broken" report can be what makes a machine work again.
+      if (pushPublicKey()) after(() => notifyIfFixed(report.machineId));
+    }
+  }
+  return { ok: true, id: reportId };
+}
+
+/** Take back this browser's flag on a report. */
+export async function unflagReport(reportId: unknown): Promise<ActionResult> {
+  const device = await deviceHash({ create: false });
+  if (!device || typeof reportId !== "string") return { ok: false, error: "Couldn't undo that." };
+  await getDb().delete(reportFlags).where(and(eq(reportFlags.reportId, reportId), eq(reportFlags.deviceHash, device)));
   return { ok: true, id: reportId };
 }
 
