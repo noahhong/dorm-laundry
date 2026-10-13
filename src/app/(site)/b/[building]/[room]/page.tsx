@@ -87,7 +87,7 @@ export default async function RoomPage(props: PageProps<"/b/[building]/[room]">)
       {busy && <BusyHours share={busy.share} today={busy.today} hour={busy.hour} runs={busy.runs} />}
 
       {/* AI helper: clothes → machine and setting (PLAN.md §6.8) */}
-      {helper && <LaundryHelper roomId={data.room.id} />}
+      {helper && <LaundryHelper roomId={data.room.id} usingChatGPT={(await getConfig()).assistantProvider === "chatgpt"} />}
 
       {data.machines.length === 0 ? (
         <p className="mt-8 text-center text-label text-text-3">No machines in this room yet.</p>

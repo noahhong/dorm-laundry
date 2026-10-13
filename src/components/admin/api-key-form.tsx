@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { removeApiKey, saveApiKey, testApiKey, type FormState } from "@/app/admin/actions";
 import { Card, Pill } from "./ui";
 
-type Props = { source: "env" | "admin" | null; hint: string | null };
+type Props = { provider: "anthropic" | "openai"; source: "env" | "admin" | null; hint: string | null };
 
 const control = "h-11 w-full min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border-strong/60 bg-surface px-3 text-body text-text";
 const secondary = "pressable h-11 rounded-[10px] border border-border bg-surface px-4 text-label font-semibold text-text-2 disabled:opacity-50";
@@ -28,24 +28,29 @@ function Status({ state }: { state: FormState }) {
   );
 }
 
-/** Where the admin pastes the Anthropic API key for the laundry helper. The saved key is never shown again. */
-export function ApiKeyForm({ source, hint }: Props) {
+/** Where the admin pastes a provider API key for the laundry helper. The saved key is never shown again. */
+export function ApiKeyForm({ provider, source, hint }: Props) {
+  const name = provider === "openai" ? "OpenAI (ChatGPT models)" : "Anthropic (Claude)";
+  const envName = provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
+  const inputId = `${provider}-apiKey`;
   const [saved, save] = useActionState<FormState, FormData>(saveApiKey, undefined);
   const [tested, test] = useActionState<FormState, FormData>(testApiKey, undefined);
   const [removed, remove] = useActionState<FormState, FormData>(removeApiKey, undefined);
 
   return (
     <Card
-      id="api-key"
-      title="Laundry helper API key"
-      description="The AI chat needs an Anthropic API key (console.anthropic.com → API keys). It's checked before saving, stored encrypted, and never shown again. Questions are billed to this key; cap them under Laundry helper chat below."
+      id={`${provider}-api-key`}
+      title={`${name} API key`}
+      description={provider === "openai"
+        ? "Use an OpenAI API key from platform.openai.com/api-keys. API usage is billed separately from your ChatGPT subscription. Keys are checked before saving, stored encrypted, and never shown again. Select OpenAI API in Choose your AI connection above."
+        : "Use an Anthropic API key from console.anthropic.com. Keys are checked before saving, stored encrypted, and never shown again. Select Anthropic API in Choose your AI connection above."}
       className="mb-4"
     >
       <div className="space-y-3">
         <p className="flex flex-wrap items-center gap-2 text-label text-text-2">
           {source === "env" ? (
             <>
-              <Pill tone="accent">From environment</Pill> Using ANTHROPIC_API_KEY ({hint}). Remove it from the environment to manage the key here.
+              <Pill tone="accent">From environment</Pill> Using {envName} ({hint}). Remove it from the environment to manage the key here.
             </>
           ) : source === "admin" ? (
             <>
@@ -53,23 +58,24 @@ export function ApiKeyForm({ source, hint }: Props) {
             </>
           ) : (
             <>
-              <Pill>No key</Pill> The laundry helper is hidden until a key is saved.
+              <Pill>No key</Pill> Save a key to use this provider.
             </>
           )}
         </p>
 
         {source !== "env" && (
           <form action={save} className="flex flex-wrap gap-2">
-            <label htmlFor="apiKey" className="sr-only">
-              Anthropic API key
+            <input type="hidden" name="provider" value={provider} />
+            <label htmlFor={inputId} className="sr-only">
+              {name} API key
             </label>
             <input
-              id="apiKey"
+              id={inputId}
               name="apiKey"
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder={source === "admin" ? "Paste a new key to replace it" : "sk-ant-…"}
+              placeholder={source === "admin" ? "Paste a new key to replace it" : provider === "openai" ? "sk-…" : "sk-ant-…"}
               required
               className={control}
             />
@@ -83,12 +89,14 @@ export function ApiKeyForm({ source, hint }: Props) {
         {source && (
           <div className="flex flex-wrap items-center gap-2">
             <form action={test}>
+              <input type="hidden" name="provider" value={provider} />
               <Submit pendingText="Testing…" className={secondary}>
                 Test key
               </Submit>
             </form>
             {source === "admin" && (
               <form action={remove}>
+                <input type="hidden" name="provider" value={provider} />
                 <Submit pendingText="Removing…" className={`${secondary} text-broken-fg`}>
                   Remove key
                 </Submit>

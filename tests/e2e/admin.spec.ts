@@ -134,6 +134,11 @@ test("per-room dryer settings limit what residents can report and get recommende
 
 test("a damaged-clothes report records what got damaged, how, and a load photo that only admins see", async ({ page, context }) => {
   await login(page);
+  // Collection is off by default. Exercise the opt-in behavior only in the test database.
+  await page.goto("/admin/settings");
+  await page.locator('label[for="photosEnabled"]').click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByText(/Saved \d+ changes?\. Live now\./)).toBeVisible();
   await page.goto("/admin/rooms");
   await page.getByRole("link", { name: /Laundry room/ }).first().click();
   await page.getByLabel("Kind").selectOption("washer");
@@ -186,6 +191,9 @@ test("a damaged-clothes report records what got damaged, how, and a load photo t
   expect((await asAdmin.body()).length).toBeLessThan(400_000);
   expect((await resident.request.get(src)).status()).toBe(404);
   await resident.close();
+  await page.goto("/admin/settings");
+  await page.locator('label[for="photosEnabled"]').click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
 });
 
 test("reports can be searched, hidden, unhidden and exported; export needs admin", async ({ page, playwright, baseURL }) => {

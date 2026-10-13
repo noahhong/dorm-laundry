@@ -1,3 +1,5 @@
+import { ChatGPTPlanError } from "@/lib/chatgpt-oauth";
+import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { ASSISTANT_LIMITS, SlidingLimiter, cleanConversation, type AssistantRoom } from "@/lib/assistant";
@@ -66,9 +68,10 @@ export async function POST(req: Request) {
     const answer = await askAssistant(room, toFabricRules(config), config.siteName, turns);
     return Response.json(answer, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
-    if (err instanceof Anthropic.RateLimitError) return fail(503, "The helper is busy. Try again in a minute.");
-    if (err instanceof Anthropic.AuthenticationError) console.error("laundry helper: the Anthropic API key was rejected; check Settings → Laundry helper chat");
-    else console.error("laundry helper failed", err);
+    if (err instanceof ChatGPTPlanError) return fail(503, err.message);
+    if (err instanceof Anthropic.RateLimitError || err instanceof OpenAI.RateLimitError) return fail(503, "The helper is busy. Try again in a minute.");
+    if (err instanceof Anthropic.AuthenticationError || err instanceof OpenAI.AuthenticationError) console.error("laundry helper: API key rejected; check Settings → Laundry helper chat");
+    else console.error("laundry helper failed", { name: err instanceof Error ? err.name : "UnknownError" });
     return fail(502, "The helper couldn't answer just now. Try again in a minute.");
   }
 }

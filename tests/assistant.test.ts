@@ -51,6 +51,28 @@ describe("rankMachines", () => {
 });
 
 describe("planLoad", () => {
+  it("provides a setting for each usable machine using its own reports", () => {
+    const r = room([machine("hot", "dryer", "works"), machine("cool", "dryer", "works", { recommendation: rec("low") }), machine("broken", "dryer", "broken")]);
+    const p = planLoad(r, { fabrics: ["towels"], size: null }, rules);
+    expect(p.options.map((option) => [option.code, option.setting])).toEqual([["hot", "High"], ["cool", "Low"]]);
+  });
+  it("does not recommend machines for a load that cannot be machine washed", () => {
+    const p = planLoad(room([machine("w", "washer", "works"), machine("d", "dryer", "works")]), { fabrics: [], size: null }, rules, "no_machine");
+    expect(p.picks).toEqual([]);
+    expect(p.options).toEqual([]);
+    expect(p.care).toBe("no_machine");
+  });
+  it("offers air drying when the room has no setting within the load's heat limit", () => {
+    const p = planLoad(room([machine("d", "dryer", "works")], { offered: ["high"] }), { fabrics: ["athletic"], size: null }, rules);
+    expect(p.picks).toEqual([]);
+    expect(p.options).toEqual([]);
+    expect(p.care).toBe("air_dry");
+  });
+  it("recommends air drying wool instead of showing dryer settings", () => {
+    const p = planLoad(room([machine("w", "washer", "works"), machine("d", "dryer", "works")]), { fabrics: ["wool", "everyday"], size: null }, rules);
+    expect(p.care).toBe("air_dry");
+    expect(p.options.map((option) => option.kind)).toEqual(["washer"]);
+  });
   it("runs the load rules on the best dryer, so a learned setting is capped by the fabric", () => {
     const plan = planLoad(room([machine("w1", "washer", "works"), machine("d1", "dryer", "works")]), { fabrics: ["athletic"], size: null }, rules);
     expect(plan.picks).toEqual([
@@ -113,10 +135,10 @@ describe("cleanConversation", () => {
   it("drops a leading assistant turn and trims long messages", () => {
     const out = cleanConversation([
       { role: "assistant", content: "hi" },
-      { role: "user", content: "x".repeat(2000) },
+      { role: "user", content: "x".repeat(5000) },
     ])!;
     expect(out).toHaveLength(1);
-    expect(out[0].content).toHaveLength(600);
+    expect(out[0].content).toHaveLength(4000);
   });
   it("needs the last turn to be the resident's", () => {
     expect(cleanConversation([{ role: "user", content: "a" }, { role: "assistant", content: "b" }])).toBeNull();
@@ -136,7 +158,7 @@ describe("systemPrompt", () => {
     const s = systemPrompt(room([machine("d1", "dryer", "works")], { offered: ["low", "medium", "high"], focusCode: "d1" }), "Dorm Laundry");
     expect(s).toMatch(/Dryer d1 \(dryer\): works, usual best setting High/);
     expect(s).toMatch(/Dryer settings on the dryers here: Low, Medium, High/);
-    expect(s).toMatch(/opened this chat from Dryer d1's page/);
+    expect(s).toMatch(/planning from Dryer d1's page/);
   });
 });
 

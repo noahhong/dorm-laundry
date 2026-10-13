@@ -13,8 +13,8 @@ import { parseSettingsForm, type FormErrors } from "@/lib/config";
 import { getConfig, resetConfig, saveConfig } from "@/lib/config-server";
 import { ipHash } from "@/lib/device";
 import { machineCode, randomId, slugify } from "@/lib/ids";
-import { clearAnthropicKey, getAnthropicKey, looksLikeAnthropicKey, saveAnthropicKey } from "@/lib/api-key";
-import { testAnthropicKey } from "@/lib/assistant-server";
+import { clearProviderKey, getProviderKey, looksLikeAnthropicKey, saveProviderKey, type AssistantProvider } from "@/lib/api-key";
+import { testProviderKey } from "@/lib/assistant-server";
 import { notifyIfFixed } from "@/lib/push";
 import { settingsToStore } from "@/lib/rooms";
 
@@ -266,30 +266,42 @@ export async function resetSettings(): Promise<FormState> {
   return { ok: "Everything is back to the defaults." };
 }
 
-/** Laundry helper API key: checked with Anthropic before saving, stored encrypted, never sent back to the browser. */
-export async function saveApiKey(_: FormState, fd: FormData): Promise<FormState> {
-  await requireAdmin();
-  const key = str(fd, "apiKey");
-  if (!looksLikeAnthropicKey(key)) return { error: "That doesn't look like an Anthropic API key. It starts with sk-ant-." };
-  const problem = await testAnthropicKey(key);
-  if (problem) return { error: `${problem} Nothing was saved.` };
-  await saveAnthropicKey(key);
-  refresh();
-  return { ok: "Key saved and working. The laundry helper is live." };
+function keyProvider(fd: FormData): AssistantProvider | null {
+  const value = fd.get("provider");
+  return value == null || value === "anthropic" ? "anthropic" : value === "openai" ? "openai" : null;
 }
 
-export async function removeApiKey(): Promise<FormState> {
+/** Laundry helper API key: checked with its provider before saving, stored encrypted, never sent back to the browser. */
+export async function saveApiKey(_: FormState, fd: FormData): Promise<FormState> {
   await requireAdmin();
-  await clearAnthropicKey();
+  const provider = keyProvider(fd);
+  if (!provider) return { error: "Choose a valid AI provider." };
+  const key = str(fd, "apiKey");
+  const valid = provider === "anthropic" ? looksLikeAnthropicKey(key) : /^sk-[A-Za-z0-9_-]{20,500}$/.test(key) && !key.startsWith("sk-ant-");
+  if (!valid) return { error: `That doesn't look like an ${provider === "openai" ? "OpenAI" : "Anthropic"} API key.` };
+  const problem = await testProviderKey(provider, key);
+  if (problem) return { error: `${problem} Nothing was saved.` };
+  await saveProviderKey(provider, key);
+  refresh();
+  return { ok: "Key saved and checked. Select this provider in Choose your AI connection to use it." };
+}
+
+export async function removeApiKey(_: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const provider = keyProvider(fd);
+  if (!provider) return { error: "Choose a valid AI provider." };
+  await clearProviderKey(provider);
   refresh();
   return { ok: "Key removed." };
 }
 
-export async function testApiKey(): Promise<FormState> {
+export async function testApiKey(_: FormState, fd: FormData): Promise<FormState> {
   await requireAdmin();
-  const { key } = await getAnthropicKey();
+  const provider = keyProvider(fd);
+  if (!provider) return { error: "Choose a valid AI provider." };
+  const { key } = await getProviderKey(provider);
   if (!key) return { error: "No key to test yet." };
-  const problem = await testAnthropicKey(key);
+  const problem = await testProviderKey(provider, key);
   return problem ? { error: problem } : { ok: "The key works." };
 }
 
@@ -325,4 +337,39 @@ export async function keepReport(fd: FormData) {
   if (updated.length === 0) return;
   await audit("report.keep", id, null);
   refresh();
+}
+
+
+export async function selectChatGPTPlan(_: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const { canUseChatGPT, selectChatGPT } = await import("@/lib/chatgpt-server");
+  if (!(await canUseChatGPT())) return { error: "ChatGPT subscription is available for local admin testing only." };
+  try {
+    const clientId = str(fd, "clientId");
+    const { chatGPTSummary } = await import("@/lib/chatgpt-server");
+    const previous = await chatGPTSummary();
+    await selectChatGPT(clientId, previous.activeId === clientId ? str(fd, "model") || null : null);
+    refresh();
+    return { ok: "Account saved. Choose a model for this account and select ChatGPT subscription in Choose your AI connection." };
+  } catch { return { error: "Couldn't select that account or model. Reconnect or choose an available model." }; }
+}
+
+export async function disconnectChatGPTPlan(): Promise<FormState> {
+  await requireAdmin();
+  const { canUseChatGPT, disconnectChatGPT } = await import("@/lib/chatgpt-server");
+  if (!(await canUseChatGPT())) return { error: "Local admin access required." };
+  const revoked = await disconnectChatGPT();
+  refresh();
+  return revoked ? { ok: "ChatGPT disconnected." } : { error: "Disconnected locally. Remote revocation couldn't be confirmed; remove Dorm Laundry in ChatGPT Settings → app access." };
+}
+
+
+export async function selectAssistantProvider(_: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const provider = str(fd, "provider");
+  if (!["auto", "anthropic", "openai", "chatgpt"].includes(provider)) return { error: "Choose a valid AI provider." };
+  const current = await getConfig();
+  await saveConfig({ ...current, assistantProvider: provider }, current);
+  refresh();
+  return { ok: "Provider saved. The helper uses this connection once it is configured." };
 }

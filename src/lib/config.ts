@@ -28,7 +28,7 @@ export const GROUPS = [
   { id: "status", title: "Machine status", blurb: "How reports turn into Works / Caution / Broken." },
   { id: "settings", title: "Dryer settings", blurb: "How reports turn into a recommended dryer setting." },
   { id: "load", title: "Load advice", blurb: "Limits per fabric for “What's in your load?”. A dryer's own learned setting is used unless the load needs something cooler." },
-  { id: "assistant", title: "Laundry helper chat", blurb: "An AI chat on room and machine pages that turns “what I'm washing” into a machine and setting, using the rules above. Only shows once an Anthropic API key is saved below (or set as ANTHROPIC_API_KEY)." },
+  { id: "assistant", title: "AI load planner", blurb: "A guided selection tool on room and machine pages that turns “what I'm washing” into a machine and setting, using the rules above. Only shows once a key for the selected provider is saved above or set in the environment." },
   { id: "outliers", title: "Weak-dryer detection", blurb: "Flags a dryer that dries much worse than its room-mates." },
   { id: "timer", title: "“I started it” timer", blurb: "Residents tap “I started it” so others can see when a machine should be free. The same taps build the room's busy hours." },
   { id: "abuse", title: "Reports & abuse limits", blurb: "Rate limits and spam speed bumps for anonymous reports." },
@@ -41,7 +41,7 @@ export const FIELDS = [
   { key: "announcement", group: "site", kind: "longtext", max: 240, default: "", label: "Announcement banner", help: "Shown at the top of every public page, e.g. “Room closed for vent cleaning until Friday”. Leave empty for none." },
   { key: "timeZone", group: "site", kind: "text", max: 64, default: "America/Los_Angeles", label: "Time zone", help: "The room's time zone (IANA name, e.g. America/Los_Angeles), used for busy hours." },
   { key: "notesPublic", group: "site", kind: "bool", default: true, label: "Show report notes publicly", help: "When off, residents' free-text notes are visible to admins only (they are still collected)." },
-  { key: "photosEnabled", group: "site", kind: "bool", default: true, label: "Let residents add a photo of their load", help: "An optional photo on a report. It is shrunk on the phone to about 150 KB, location data removed, and kept in the database." },
+  { key: "photosEnabled", group: "site", kind: "bool", default: false, label: "Let residents add a photo of their load", help: "Off by default for privacy. When off, reports have no photo picker and the server rejects photo uploads." },
   { key: "photosPublic", group: "site", kind: "bool", default: false, label: "Show load photos publicly", help: "When off, photos are visible to admins only (Reports page). Hidden reports' photos are always admin-only." },
   { key: "roomFallbackEnabled", group: "site", kind: "bool", default: true, label: "Suggest a setting for untested dryers", help: "A dryer with no reports borrows the middle setting of the other dryers in its room." },
 
@@ -74,9 +74,10 @@ export const FIELDS = [
   { key: "printsMaxDryer", group: "load", kind: "choice", options: DRYER_SETTINGS, default: "low", label: "Graphic tees: hottest dryer setting", help: "Screen prints crack or peel on high heat." },
   { key: "printsWash", group: "load", kind: "choice", options: WASHER_SETTINGS, default: "cold", label: "Graphic tees: hottest wash water", help: "" },
 
-  { key: "assistantEnabled", group: "assistant", kind: "bool", default: true, label: "Show the laundry helper chat", help: "Residents describe their clothes and get a machine and setting. Settings always come from the load rules and the room's reports, never from the AI alone." },
+  { key: "assistantProvider", group: "assistant", kind: "choice", options: ["auto", "anthropic", "openai", "chatgpt"], default: "auto", label: "AI provider", help: "Choose the connection to use. ChatGPT subscription is for signed-in local admin testing. Automatic uses Anthropic API, otherwise OpenAI API." },
+  { key: "assistantEnabled", group: "assistant", kind: "bool", default: true, label: "Show the AI load planner", help: "Residents describe their clothes and get a machine and setting. Settings always come from the load rules and the room's reports, never from the AI alone." },
   { key: "assistantPerIpPerHour", group: "assistant", kind: "int", min: 1, max: 200, step: 1, default: 20, label: "Questions per network per hour", help: "A whole dorm can share one address, so keep this generous.", unit: "questions" },
-  { key: "assistantPerDay", group: "assistant", kind: "int", min: 10, max: 20000, step: 10, default: 1000, label: "Questions per day, whole site", help: "Caps what the chat can cost. Each question is one to four AI calls. Counts reset when the server restarts.", unit: "questions" },
+  { key: "assistantPerDay", group: "assistant", kind: "int", min: 10, max: 20000, step: 10, default: 1000, label: "Questions per day, whole site", help: "Caps what the planner can cost. Each question is one to four AI calls. Counts reset when the server restarts.", unit: "questions" },
 
   { key: "outlierEnabled", group: "outliers", kind: "bool", default: true, label: "Detect weak dryers", help: "Show a “Dries worse than the other dryers here” banner with a link to WASH's service request." },
   { key: "outlierMinReports", group: "outliers", kind: "int", min: 2, max: 20, step: 1, default: 3, label: "Reports needed on the dryer", help: "Different devices, Medium/High loads only.", unit: "reports" },
@@ -204,7 +205,7 @@ export function toLearnParams(c: Config): { minLoads: number; rate: number } | u
 }
 
 /** Display label for a choice field's option. */
-export const optionLabel = (v: string) => SETTING_LABEL[v] ?? v;
+export const optionLabel = (v: string) => ({ auto: "Automatic", anthropic: "Anthropic API (Claude)", openai: "OpenAI API", chatgpt: "ChatGPT subscription" }[v] ?? SETTING_LABEL[v] ?? v);
 
 /** Fields whose value differs from the defaults, for the "changed" badges in the admin. */
 export function changedFromDefault(c: Config): FieldKey[] {

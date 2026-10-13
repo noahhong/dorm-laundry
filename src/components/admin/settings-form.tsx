@@ -80,6 +80,7 @@ export function SettingsForm({ values }: { values: Config }) {
 
   return (
     <form action={action} className="space-y-4">
+      <input type="hidden" name="assistantProvider" value={values.assistantProvider} />
       <div key={version} className="space-y-4">
         {GROUPS.map((g) => (
           <section key={g.id} aria-labelledby={`g-${g.id}`} className="rounded-[var(--radius-md)] border border-border bg-surface shadow-e1">
@@ -90,7 +91,7 @@ export function SettingsForm({ values }: { values: Config }) {
               <p className="text-label text-text-3">{g.blurb}</p>
             </header>
             <div className="mt-2 divide-y divide-border">
-              {FIELDS.filter((f) => f.group === g.id).map((f) => {
+              {FIELDS.filter((f) => f.group === g.id && f.key !== "assistantProvider").map((f) => {
                 const changed = values[f.key] !== f.default;
                 const err = errors[f.key];
                 return (

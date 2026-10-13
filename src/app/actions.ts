@@ -52,6 +52,7 @@ export async function submitReport(payload: ReportPayload): Promise<ActionResult
   const kindError = checkForKind(machine.kind, p, offeredSettings(room?.dryerSettings));
   if (kindError) return { ok: false, error: kindError };
 
+  if (p.photo && !config.photosEnabled) return { ok: false, error: "Photo uploads are turned off. Submit without a photo." };
   const photo = p.photo && config.photosEnabled ? decodePhoto(p.photo) : null;
   if (p.photo && config.photosEnabled && !photo) return { ok: false, error: "That photo didn't upload properly. Try again or skip it." };
   const damaged = p.outcome === "damaged";

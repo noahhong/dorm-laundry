@@ -8,9 +8,9 @@ Finding the best setting for dorm laundry (starting at Hedrick Summit) so no mor
 - for dryers, the **setting that actually dries** without cooking your clothes
 - optionally, **what to use for their load**: tap what's in it (athletic wear, towels, wool…), how thick it is and how full it is, and get the setting for that machine and that load. Over time it **learns from residents' reports** ("thick cotton came out damp on Medium here, so go one hotter")
 - on the room page, **when it's usually busy**: a bar per hour for each weekday, built from "I started it" taps
-- optionally, the **laundry helper**: describe your clothes in your own words ("gym leggings and a wool sweater") and an AI helper tells you which washer and dryer to use and on what setting, using the same rules and this room's reports
+- optionally, the **AI load planner**: tap individual items or add any item by name, enter care-label notes and load size, then get washer/dryer setting cards grounded in this room's reports. The agent can ask a focused question with selectable answers; unsuitable loads get care guidance instead of machine picks. Expand the results to see settings for other usable machines.
 
-A "Damaged clothes" report can say what got damaged and how, and any report can carry an optional photo of the load (admin-only by default). Under each report, others can tap **Same here** or **Not for me**, which makes it count more or less, or **Flag** it as spam, rude, personal info or wrong; enough flags hide it until an admin checks it.
+A "Damaged clothes" report can say what got damaged and how. Photo collection is off by default for privacy; reports and the AI planner work with text alone. Under each report, others can tap **Same here** or **Not for me**, which makes it count more or less, or **Flag** it as spam, rude, personal info or wrong; enough flags hide it until an admin checks it.
 
 After a load, they report how it went in **3 taps**, with no login and no app. Status and recommendations come from recent reports, with time decay (see [PLAN.md §6](PLAN.md#6-algorithm-status-and-best-setting)).
 
@@ -83,7 +83,9 @@ Settings are stored in the database, not in code, so they survive deploys and ap
 | `SESSION_SECRET` | yes | 32+ random characters (`openssl rand -base64 32`). Signs the admin cookie and salts the device and IP hashes. The app refuses to run without it, except under `next dev` (or with `ALLOW_DEV_SECRET=1`, for throwaway previews only). Rotating it also resets all device and IP hashes. |
 | `PUBLIC_BASE_URL` | for printing | The origin printed in QR codes, e.g. `https://laundry.example.com` |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional | Turns on the invisible Cloudflare Turnstile bot check for reports. Both must be set; leave empty to disable. |
-| `ANTHROPIC_API_KEY` | optional | Usually easier to paste the key in **Admin → Settings → Laundry helper API key** instead (stored encrypted). If set here, it wins over the saved one. Without either, the laundry helper chat is hidden. |
+| `OPENAI_API_KEY` | optional | Or save an OpenAI key in **Admin → Settings**. Select OpenAI API in Choose your AI connection; Automatic uses it when no Anthropic key is configured. API usage is billed separately from ChatGPT subscriptions. |
+| `OPENAI_MODEL` | optional | Defaults to `gpt-5.4-mini`. |
+| `ANTHROPIC_API_KEY` | optional | Usually easier to paste the key in **Admin → Settings → Laundry helper API key** instead (stored encrypted). If set here, it wins over the saved one. Without either, the AI load planner is hidden. |
 | `ANTHROPIC_MODEL` | optional | The Claude model for the helper. Defaults to `claude-opus-5-5`; `claude-sonnet-5-5` costs about half. |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Turns on "Notify me when it's fixed" and "Notify me when it's done" (Web Push). Generate once with `npx web-push generate-vapid-keys`; both must be set. Changing them drops every pending alert. |
 | `VAPID_SUBJECT` | optional | Contact the push services can reach you at: `mailto:you@example.com` or your `https://` site. Defaults to `PUBLIC_BASE_URL`. |
@@ -145,4 +147,13 @@ tests/                   Vitest unit tests and Playwright e2e
 
 - `GET /api/rooms/:roomId`: the room's machines, each with status and recommendation
 - `GET /api/machines/:code`: one machine with its status, recommendation and recent reports
-- `POST /api/assistant`: the laundry helper chat (only once an API key is saved in Settings or set in the environment; see PLAN.md §6.8)
+- `POST /api/assistant`: the AI load planner (only once an API key is saved in Settings or set in the environment; see PLAN.md §6.8)
+
+
+## Test with your ChatGPT subscription locally
+
+In **Admin → Settings → ChatGPT subscription**, choose **Continue with ChatGPT** and allow plan usage for an eligible account. Choose an available model and save, then select **ChatGPT subscription** in **Choose your AI connection** and click **Use this provider**. You can switch back to **OpenAI API** or **Anthropic API (Claude)** at any time.
+
+This connection is for the signed-in administrator on the local computer. It requires a local SQLite database, `PUBLIC_BASE_URL=http://localhost:3000` (or another loopback port), and a real 32+ character `SESSION_SECRET`. It uses a `127.0.0.1` callback, validates the OAuth state, PKCE, signed identity, nonce and plan permission, and encrypts credentials in the local database. It refreshes tokens and keeps account registrations separate. Disconnect stops local use and attempts remote revocation.
+
+The public site should use an API provider. The subscription path never silently falls back to API billing, and public or network visitors cannot use the administrator's ChatGPT plan. See [OpenAI's integration guide](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) for eligibility and current preview limitations.

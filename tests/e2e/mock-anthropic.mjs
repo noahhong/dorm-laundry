@@ -37,10 +37,12 @@ createServer((req, res) => {
       const best = /Best dryer: (.+?) \(.*? on (\w+)/.exec(last.content[0].content);
       out = message([{ type: "text", text: best ? `Use ${best[1]} on ${best[2]}.` : "No dryer works right now." }], "end_turn");
     } else {
-      const q = String(last.content).toLowerCase();
+      const q = body.messages.filter((m) => m.role === "user" && typeof m.content === "string").map((m) => m.content).join(" ").toLowerCase();
       const fabrics = Object.entries(WORDS).filter(([w]) => q.includes(w)).map(([, f]) => f);
-      out = fabrics.length
-        ? message([{ type: "tool_use", id: "toolu_1", name: "plan_load", input: { fabrics, size: "unknown", thickness: q.includes("thick") ? "thick" : "unknown" } }], "tool_use")
+      out = q.includes("jacket") && !q.includes("machine washable")
+        ? message([{ type: "tool_use", id: "toolu_question", name: "clarify_load", input: { question: "What does the jacket's care label say?", options: ["Machine washable", "Dry clean only", "Not sure"] } }], "tool_use")
+        : fabrics.length
+        ? message([{ type: "tool_use", id: "toolu_1", name: "plan_load", input: { fabrics, size: "unknown", thickness: q.includes("thick") ? "thick" : "unknown", care: q.includes("do not tumble dry") ? "air_dry" : "standard" } }], "tool_use")
         : message([{ type: "text", text: "What's in the load?" }], "end_turn");
     }
     res.end(JSON.stringify(out));
